@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -41,10 +40,10 @@ import {
 
 export default function SourcesPage() {
   const {
+    loading,
     sources,
     outputs,
     catalog,
-    statusMessage,
     createSource,
     saveSourceEdits,
     deleteSource,
@@ -363,16 +362,24 @@ export default function SourcesPage() {
         </Dialog>
       </header>
 
-      {statusMessage !== "Ready" && <Badge>{statusMessage}</Badge>}
-
       <Card>
         <CardHeader>
           <CardTitle>
-            {sources.length} source{sources.length !== 1 ? "s" : ""}
+            {loading ? (
+              <span className="inline-block h-5 w-24 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" />
+            ) : (
+              `${sources.length} source${sources.length !== 1 ? "s" : ""}`
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {sources.length === 0 ? (
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-md bg-zinc-100 dark:bg-zinc-800" />
+              ))}
+            </div>
+          ) : sources.length === 0 ? (
             <p className="text-sm text-zinc-500">
               No sources yet. Add one to get started.
             </p>

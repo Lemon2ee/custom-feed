@@ -30,9 +30,9 @@ import {
 
 export default function OutputsPage() {
   const {
+    loading,
     outputs,
     catalog,
-    statusMessage,
     createOutput,
     updateOutput,
     deleteOutput,
@@ -218,16 +218,24 @@ export default function OutputsPage() {
         </Dialog>
       </header>
 
-      {statusMessage !== "Ready" && <Badge>{statusMessage}</Badge>}
-
       <Card>
         <CardHeader>
           <CardTitle>
-            {outputs.length} output{outputs.length !== 1 ? "s" : ""}
+            {loading ? (
+              <span className="inline-block h-5 w-24 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" />
+            ) : (
+              `${outputs.length} output${outputs.length !== 1 ? "s" : ""}`
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {outputs.length === 0 ? (
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-md bg-zinc-100 dark:bg-zinc-800" />
+              ))}
+            </div>
+          ) : outputs.length === 0 ? (
             <p className="text-sm text-zinc-500">
               No outputs yet. Add one to start receiving notifications.
             </p>

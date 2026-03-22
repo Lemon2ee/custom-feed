@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export interface SourceRecord {
   id: string;
@@ -172,16 +173,7 @@ export function useFeedApi() {
     tickIntervalSec: 30,
     sources: [],
   });
-  const [statusMessage, setStatusMessageRaw] = useState("Ready");
-  const dismissTimer = useRef<ReturnType<typeof setTimeout>>(null);
-
-  function setStatusMessage(msg: string) {
-    setStatusMessageRaw(msg);
-    if (dismissTimer.current) clearTimeout(dismissTimer.current);
-    if (msg !== "Ready") {
-      dismissTimer.current = setTimeout(() => setStatusMessageRaw("Ready"), 3000);
-    }
-  }
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const [
@@ -209,6 +201,7 @@ export function useFeedApi() {
     setEvents(eventsRes.data);
     setPlugins(pluginsRes.data);
     setCatalog(safeCatalog);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -233,7 +226,7 @@ export function useFeedApi() {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    setStatusMessage(`Source saved.`);
+    toast.success("Source saved.");
     await refresh();
   }
 
@@ -254,7 +247,7 @@ export function useFeedApi() {
       method: "PATCH",
       body: JSON.stringify(edits),
     });
-    setStatusMessage("Source updated.");
+    toast.success("Source updated.");
     await refresh();
   }
 
@@ -262,7 +255,7 @@ export function useFeedApi() {
     await jsonFetch(`/api/sources/${sourceId}`, {
       method: "DELETE",
     });
-    setStatusMessage("Source deleted.");
+    toast.success("Source deleted.");
     await refresh();
   }
 
@@ -274,7 +267,7 @@ export function useFeedApi() {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    setStatusMessage(`Output saved.`);
+    toast.success("Output saved.");
     await refresh();
   }
 
@@ -286,7 +279,7 @@ export function useFeedApi() {
       method: "PATCH",
       body: JSON.stringify(edits),
     });
-    setStatusMessage("Output updated.");
+    toast.success("Output updated.");
     await refresh();
   }
 
@@ -294,7 +287,7 @@ export function useFeedApi() {
     await jsonFetch(`/api/outputs/${outputId}`, {
       method: "DELETE",
     });
-    setStatusMessage("Output deleted.");
+    toast.success("Output deleted.");
     await refresh();
   }
 
@@ -312,16 +305,16 @@ export function useFeedApi() {
         result?: { error?: string };
       };
       if (res.ok) {
-        setStatusMessage("Test notification sent!");
+        toast.success("Test notification sent!");
         return { ok: true };
       }
       const msg =
         body.error ?? body.result?.error ?? `Test failed (${res.status})`;
-      setStatusMessage(`Test failed: ${msg}`);
+      toast.error(`Test failed: ${msg}`);
       return { ok: false, error: msg };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setStatusMessage(`Test failed: ${msg}`);
+      toast.error(`Test failed: ${msg}`);
       return { ok: false, error: msg };
     }
   }
@@ -334,13 +327,13 @@ export function useFeedApi() {
       const body = (await res.json()) as { data?: SourceItem[]; error?: string };
       if (!res.ok) {
         const msg = body.error ?? `Failed to fetch items (${res.status})`;
-        setStatusMessage(msg);
+        toast.error(msg);
         return { ok: false, items: [], error: msg };
       }
       return { ok: true, items: body.data ?? [] };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setStatusMessage(`Fetch items failed: ${msg}`);
+      toast.error(`Fetch items failed: ${msg}`);
       return { ok: false, items: [], error: msg };
     }
   }
@@ -360,25 +353,25 @@ export function useFeedApi() {
         results?: Array<{ status: string; error?: string }>;
       };
       if (body.ok) {
-        setStatusMessage("Test delivery sent!");
+        toast.success("Test delivery sent!");
         return { ok: true };
       }
       const failedResults = body.results?.filter((r) => r.status !== "sent") ?? [];
       const msg = failedResults.length > 0
         ? failedResults.map((r) => r.error).filter(Boolean).join("; ") || "Some outputs failed"
         : `Test delivery failed (${res.status})`;
-      setStatusMessage(`Test delivery: ${msg}`);
+      toast.error(`Test delivery: ${msg}`);
       return { ok: false, error: msg };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setStatusMessage(`Test delivery failed: ${msg}`);
+      toast.error(`Test delivery failed: ${msg}`);
       return { ok: false, error: msg };
     }
   }
 
   async function runWorkers() {
     await jsonFetch("/api/workers/run", { method: "POST" });
-    setStatusMessage("Ingest + delivery workers executed.");
+    toast.success("Ingest + delivery workers executed.");
     await refresh();
   }
 
@@ -388,21 +381,20 @@ export function useFeedApi() {
       method: "POST",
       body: JSON.stringify({ action }),
     });
-    setStatusMessage(
+    toast.success(
       action === "start" ? "Auto-poll started." : "Auto-poll stopped.",
     );
     await refresh();
   }
 
   return {
+    loading,
     sources,
     outputs,
     events,
     plugins,
     catalog,
     autoPoll,
-    statusMessage,
-    setStatusMessage,
     refresh,
     createSource,
     saveSourceEdits,
