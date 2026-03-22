@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rssInputConnector } from "@/src/plugins/input/rss";
 import { youtubeInputConnector } from "@/src/plugins/input/youtube";
+import { hackerNewsInputConnector } from "@/src/plugins/input/hackernews";
+import { steamNewsInputConnector } from "@/src/plugins/input/steam-news";
 import { ntfyOutputConnector } from "@/src/plugins/output/ntfy";
 import { barkOutputConnector } from "@/src/plugins/output/bark";
 import { normalizeEvent } from "@/src/core/events/normalize";
@@ -32,6 +34,43 @@ describe("input connector contract", () => {
       }).valid,
     ).toBe(true);
     expect(youtubeInputConnector.validateConfig({ channel: "", limit: 20 }).valid).toBe(false);
+  });
+
+  it("hackernews connector validates config shape", () => {
+    expect(hackerNewsInputConnector.validateConfig({}).valid).toBe(true);
+  });
+
+  it("steam-news connector validates config shape", () => {
+    expect(
+      steamNewsInputConnector.validateConfig({
+        newsUrl: "https://store.steampowered.com/news/app/2868840",
+        limit: 10,
+      }).valid,
+    ).toBe(true);
+    expect(
+      steamNewsInputConnector.validateConfig({
+        newsUrl: "2868840",
+        limit: 10,
+      }).valid,
+    ).toBe(true);
+    expect(
+      steamNewsInputConnector.validateConfig({
+        newsUrl: "https://store.steampowered.com/app/730/Counter-Strike_2/",
+        limit: 10,
+      }).valid,
+    ).toBe(true);
+    expect(
+      steamNewsInputConnector.validateConfig({
+        newsUrl: "not-a-valid-id",
+        limit: 10,
+      }).valid,
+    ).toBe(false);
+    expect(
+      steamNewsInputConnector.validateConfig({
+        newsUrl: "",
+        limit: 10,
+      }).valid,
+    ).toBe(false);
   });
 });
 

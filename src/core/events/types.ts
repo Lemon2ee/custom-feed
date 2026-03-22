@@ -2,6 +2,8 @@ export type SourceType =
   | "rss"
   | "youtube"
   | "bilibili"
+  | "hackernews"
+  | "steam-news"
   | "stock"
   | "webhook"
   | "custom";

@@ -2,6 +2,8 @@ import type { ConnectorRegistry } from "@/src/core/pipeline/orchestrator";
 import { rssInputConnector } from "./input/rss";
 import { youtubeInputConnector } from "./input/youtube";
 import { bilibiliInputConnector } from "./input/bilibili";
+import { hackerNewsInputConnector } from "./input/hackernews";
+import { steamNewsInputConnector } from "./input/steam-news";
 import { ntfyOutputConnector } from "./output/ntfy";
 import { barkOutputConnector } from "./output/bark";
 
@@ -28,6 +30,8 @@ export const connectorRegistry: ConnectorRegistry = {
     [rssInputConnector.id]: rssInputConnector,
     [youtubeInputConnector.id]: youtubeInputConnector,
     [bilibiliInputConnector.id]: bilibiliInputConnector,
+    [hackerNewsInputConnector.id]: hackerNewsInputConnector,
+    [steamNewsInputConnector.id]: steamNewsInputConnector,
   },
   outputs: {
     [ntfyOutputConnector.id]: ntfyOutputConnector,
@@ -103,6 +107,35 @@ export const connectorCatalog: {
           type: "number",
           required: true,
           placeholder: "30",
+        },
+      ],
+    },
+    {
+      id: "hackernews",
+      kind: "input",
+      name: "Hacker News #1",
+      description: "Notifies when a new story reaches #1 on Hacker News.",
+      configFields: [],
+    },
+    {
+      id: "steam-news",
+      kind: "input",
+      name: "Steam Game News",
+      description: "Polls news and patch notes for a Steam game.",
+      configFields: [
+        {
+          key: "newsUrl",
+          label: "Steam Game URL or App ID",
+          type: "text",
+          required: true,
+          placeholder: "https://store.steampowered.com/news/app/2868840",
+        },
+        {
+          key: "limit",
+          label: "Max Items",
+          type: "number",
+          required: true,
+          placeholder: "10",
         },
       ],
     },

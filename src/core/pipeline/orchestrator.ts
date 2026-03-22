@@ -79,7 +79,7 @@ export async function runSourcePoll(
     if (!matchesSourceFilter(item, source.filter)) {
       continue;
     }
-    const knownSourceTypes = ["rss", "youtube", "bilibili", "stock", "webhook", "custom"] as const;
+    const knownSourceTypes = ["rss", "youtube", "bilibili", "hackernews", "steam-news", "stock", "webhook", "custom"] as const;
     const sourceType = (knownSourceTypes as readonly string[]).includes(connectorId)
       ? (connectorId as (typeof knownSourceTypes)[number])
       : "custom";
