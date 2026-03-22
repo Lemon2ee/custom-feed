@@ -24,6 +24,7 @@ interface SourceRecord {
     includeKeywords?: string[];
     excludeKeywords?: string[];
   };
+  pollIntervalSec: number;
   enabled: boolean;
 }
 
@@ -75,6 +76,13 @@ interface SourceEditState {
   includeKeywords: string;
   excludeKeywords: string;
   outputIds: string[];
+  pollIntervalSec: string;
+}
+
+interface AutoPollStatus {
+  running: boolean;
+  tickIntervalSec: number;
+  sources: Array<{ id: string; lastPolledAt: string | null; pollIntervalSec: number }>;
 }
 
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -111,6 +119,12 @@ export function Dashboard() {
   );
   const [outputConfig, setOutputConfig] = useState<Record<string, string>>({});
   const [sourceEdits, setSourceEdits] = useState<Record<string, SourceEditState>>({});
+  const [newSourcePollInterval, setNewSourcePollInterval] = useState("300");
+  const [autoPoll, setAutoPoll] = useState<AutoPollStatus>({
+    running: false,
+    tickIntervalSec: 30,
+    sources: [],
+  });
   const [statusMessage, setStatusMessage] = useState("Ready");
 
   function splitKeywordCsv(value: string): string[] {
@@ -162,13 +176,15 @@ export function Dashboard() {
   }
 
   const refresh = useCallback(async () => {
-    const [sourcesRes, outputsRes, eventsRes, pluginsRes, catalogRes] = await Promise.all([
+    const [sourcesRes, outputsRes, eventsRes, pluginsRes, catalogRes, autoPollRes] = await Promise.all([
       jsonFetch<{ data: SourceRecord[] }>("/api/sources"),
       jsonFetch<{ data: OutputRecord[] }>("/api/outputs"),
       jsonFetch<{ data: EventRecord[] }>("/api/events"),
       jsonFetch<{ data: PluginRecord[] }>("/api/plugins"),
       jsonFetch<{ data: ConnectorCatalog }>("/api/catalog"),
+      jsonFetch<{ data: AutoPollStatus }>("/api/workers/auto-poll"),
     ]);
+    setAutoPoll(autoPollRes.data);
     const safeCatalog: ConnectorCatalog = {
       inputs: catalogRes.data?.inputs ?? [],
       outputs: catalogRes.data?.outputs ?? [],
@@ -207,6 +223,7 @@ export function Dashboard() {
           includeKeywords: (source.filter?.includeKeywords ?? []).join(", "),
           excludeKeywords: (source.filter?.excludeKeywords ?? []).join(", "),
           outputIds: source.outputIds ?? [],
+          pollIntervalSec: String(source.pollIntervalSec ?? 300),
         };
       }
       return next;
@@ -229,6 +246,7 @@ export function Dashboard() {
       setStatusMessage("Pick at least one output for this source.");
       return;
     }
+    const pollSec = Number(newSourcePollInterval);
     await jsonFetch("/api/sources", {
       method: "POST",
       body: JSON.stringify({
@@ -240,6 +258,7 @@ export function Dashboard() {
           excludeKeywords: splitKeywordCsv(newSourceExcludeKeywords),
         },
         config: toPayloadConfig(selectedInput.configFields, sourceConfig),
+        pollIntervalSec: Number.isFinite(pollSec) && pollSec > 0 ? pollSec : 300,
       }),
     });
     setStatusMessage(`${selectedInput.name} source saved.`);
@@ -247,12 +266,14 @@ export function Dashboard() {
     setNewSourceName("");
     setNewSourceIncludeKeywords("");
     setNewSourceExcludeKeywords("");
+    setNewSourcePollInterval("300");
     await refresh();
   }
 
   async function saveSourceEdits(sourceId: string) {
     const edits = sourceEdits[sourceId];
     if (!edits) return;
+    const pollSec = Number(edits.pollIntervalSec);
     await jsonFetch(`/api/sources/${sourceId}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -262,6 +283,7 @@ export function Dashboard() {
           includeKeywords: splitKeywordCsv(edits.includeKeywords),
           excludeKeywords: splitKeywordCsv(edits.excludeKeywords),
         },
+        pollIntervalSec: Number.isFinite(pollSec) && pollSec > 0 ? pollSec : undefined,
       }),
     });
     setStatusMessage("Source updated.");
@@ -293,6 +315,16 @@ export function Dashboard() {
   async function runWorkers() {
     await jsonFetch("/api/workers/run", { method: "POST" });
     setStatusMessage("Ingest + delivery workers executed.");
+    await refresh();
+  }
+
+  async function toggleAutoPoll() {
+    const action = autoPoll.running ? "stop" : "start";
+    await jsonFetch("/api/workers/auto-poll", {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    setStatusMessage(action === "start" ? "Auto-poll started." : "Auto-poll stopped.");
     await refresh();
   }
 
@@ -376,6 +408,16 @@ export function Dashboard() {
                 placeholder="shorts, live"
                 value={newSourceExcludeKeywords}
                 onChange={(event) => setNewSourceExcludeKeywords(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500">Poll Interval (seconds)</label>
+              <Input
+                type="number"
+                min={10}
+                placeholder="300"
+                value={newSourcePollInterval}
+                onChange={(event) => setNewSourcePollInterval(event.target.value)}
               />
             </div>
             <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
@@ -471,12 +513,34 @@ export function Dashboard() {
               <PlugZap className="h-4 w-4" /> Connector Status
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-sm">
+          <CardContent className="text-sm space-y-3">
             <p>Sources: {sources.length}</p>
             <p>Outputs: {outputs.length}</p>
-            <Button className="mt-2" onClick={runWorkers}>
-              Run Workers
-            </Button>
+            <div className="flex items-center gap-2">
+              <Badge
+                className={autoPoll.running
+                  ? "border-green-500 text-green-700 dark:text-green-400"
+                  : ""}
+              >
+                {autoPoll.running ? "Auto-poll running" : "Auto-poll stopped"}
+              </Badge>
+              {autoPoll.running && (
+                <span className="text-xs text-zinc-500">
+                  tick every {autoPoll.tickIntervalSec}s
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={autoPoll.running ? "destructive" : "default"}
+                onClick={toggleAutoPoll}
+              >
+                {autoPoll.running ? "Stop Auto-Poll" : "Start Auto-Poll"}
+              </Button>
+              <Button variant="secondary" onClick={runWorkers}>
+                Run Once
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -519,6 +583,7 @@ export function Dashboard() {
                     includeKeywords: "",
                     excludeKeywords: "",
                     outputIds: source.outputIds ?? [],
+                    pollIntervalSec: String(source.pollIntervalSec ?? 300),
                   };
                   return (
                     <div
@@ -564,6 +629,23 @@ export function Dashboard() {
                           }))
                         }
                       />
+                      <div className="space-y-1">
+                        <label className="text-xs text-zinc-500">Poll Interval (seconds)</label>
+                        <Input
+                          type="number"
+                          min={10}
+                          value={edits.pollIntervalSec}
+                          onChange={(event) =>
+                            setSourceEdits((prev) => ({
+                              ...prev,
+                              [source.id]: {
+                                ...edits,
+                                pollIntervalSec: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </div>
                       <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
                         <p className="text-xs text-zinc-500">Route this source to outputs</p>
                         {outputs.length === 0 ? (
