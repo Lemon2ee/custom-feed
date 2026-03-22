@@ -21,6 +21,8 @@
 
 # production
 /build
+/dist
+/worker
 
 # misc
 .DS_Store
@@ -41,6 +43,7 @@ yarn-error.log*
 # cloudflare
 /.wrangler/
 worker-configuration.d.ts
+wrangler.toml
 
 # typescript
 *.tsbuildinfo

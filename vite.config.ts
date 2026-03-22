@@ -1,12 +1,33 @@
-import vinext from "vinext";
 import { defineConfig } from "vite";
+import vinext from "vinext";
+import rsc from "@vitejs/plugin-rsc";
+import { cloudflare } from "@cloudflare/vite-plugin";
 
 export default defineConfig({
-  plugins: [vinext()],
-  ssr: {
-    target: "webworker",
-  },
-  define: {
-    "process.env.RUNTIME_TARGET": JSON.stringify("cloudflare"),
+  plugins: [
+    vinext({ rsc: false }),
+    rsc({
+      entries: {
+        rsc: "virtual:vinext-rsc-entry",
+        ssr: "virtual:vinext-app-ssr-entry",
+        client: "virtual:vinext-app-browser-entry",
+      },
+    }),
+    cloudflare({
+      viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
+    }),
+  ],
+  build: {
+    rollupOptions: {
+      onwarn(warning, defaultHandler) {
+        if (warning.message?.includes("Error when using sourcemap")) return;
+        if (
+          warning.message?.includes("is dynamically imported by") &&
+          warning.message?.includes("also statically imported by")
+        )
+          return;
+        defaultHandler(warning);
+      },
+    },
   },
 });

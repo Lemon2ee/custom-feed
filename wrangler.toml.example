@@ -1,0 +1,15 @@
+name = "custom-feed"
+main = "vinext/server/app-router-entry"
+compatibility_date = "2026-03-22"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+not_found_handling = "none"
+
+[[d1_databases]]
+binding = "custom_feed_db"
+database_name = "custom-feed-db"
+database_id = "<your-d1-database-id>"
+
+[observability.logs]
+enabled = true
