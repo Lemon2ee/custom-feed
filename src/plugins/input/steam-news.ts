@@ -4,6 +4,20 @@ import type { InputConnector } from "@/src/core/connectors/types";
 const STEAM_NEWS_API =
   "https://api.steampowered.com/ISteamNews/GetNewsForApp/v0002/";
 
+function gameHeaderUrl(appId: string): string {
+  return `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appId}/header.jpg`;
+}
+
+function extractFirstImage(contents: string): string | undefined {
+  const bbcodeMatch = contents.match(/\[img\](https?:\/\/[^\s\]]+)\[\/img\]/i);
+  if (bbcodeMatch) return bbcodeMatch[1];
+
+  const htmlMatch = contents.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i);
+  if (htmlMatch) return htmlMatch[1];
+
+  return undefined;
+}
+
 function resolveAppId(input: string): string {
   const trimmed = input.trim();
   if (/^\d+$/.test(trimmed)) return trimmed;
@@ -88,6 +102,7 @@ export const steamNewsInputConnector: InputConnector<SteamNewsConfig> = {
     const newsItems = json.appnews?.newsitems ?? [];
 
     const cursorTs = context.cursor ? Number(context.cursor) : 0;
+    const headerImg = gameHeaderUrl(appId);
 
     const items = newsItems
       .filter((n) => n.date > cursorTs)
@@ -98,6 +113,7 @@ export const steamNewsInputConnector: InputConnector<SteamNewsConfig> = {
         contentText: n.contents,
         author: n.author || undefined,
         publishedAt: new Date(n.date * 1000).toISOString(),
+        imageUrl: extractFirstImage(n.contents) ?? headerImg,
         tags: [...(n.tags ?? []), ...(n.feedlabel ? [n.feedlabel] : [])],
         rawPayload: n,
       }));
