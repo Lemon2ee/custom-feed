@@ -18,6 +18,7 @@ export interface NormalizedEvent {
   author?: string;
   publishedAt?: string;
   imageUrl?: string;
+  authorImageUrl?: string;
   tags: string[];
   rawPayload: unknown;
   createdAt: string;

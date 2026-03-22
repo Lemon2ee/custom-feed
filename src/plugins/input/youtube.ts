@@ -94,6 +94,34 @@ async function resolveChannelId(config: YouTubeConfig): Promise<string> {
   return resolved;
 }
 
+// ── Channel avatar cache ────────────────────────────────────────────
+
+const avatarCache = new Map<string, { url: string | undefined; expiresAt: number }>();
+const AVATAR_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function fetchChannelAvatar(channelId: string): Promise<string | undefined> {
+  const cached = avatarCache.get(channelId);
+  if (cached && Date.now() < cached.expiresAt) return cached.url;
+
+  try {
+    const res = await fetch(`https://www.youtube.com/channel/${channelId}`, {
+      redirect: "follow",
+      headers: { "User-Agent": "custom-feed-bot/1.0 (+https://github.com)" },
+    });
+    if (!res.ok) return undefined;
+
+    const html = await res.text();
+    const match = html.match(
+      /<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i,
+    );
+    const url = match?.[1];
+    avatarCache.set(channelId, { url, expiresAt: Date.now() + AVATAR_TTL_MS });
+    return url;
+  } catch {
+    return undefined;
+  }
+}
+
 export const youtubeInputConnector: InputConnector<YouTubeConfig> = {
   kind: "input",
   id: "youtube",
@@ -107,7 +135,10 @@ export const youtubeInputConnector: InputConnector<YouTubeConfig> = {
     const parsed = configSchema.parse(config);
     const channelId = await resolveChannelId(parsed);
     const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-    const feed = await parser.parseURL(feedUrl);
+    const [feed, channelAvatar] = await Promise.all([
+      parser.parseURL(feedUrl),
+      fetchChannelAvatar(channelId),
+    ]);
     const cutoff = context.cursor ? new Date(context.cursor).getTime() : 0;
 
     const items = (feed.items ?? [])
@@ -130,6 +161,7 @@ export const youtubeInputConnector: InputConnector<YouTubeConfig> = {
           author: item.creator ?? item.author,
           publishedAt,
           imageUrl,
+          authorImageUrl: channelAvatar,
           tags,
           rawPayload: item,
         };

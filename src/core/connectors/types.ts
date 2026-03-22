@@ -19,6 +19,7 @@ export interface ExternalItem {
   author?: string;
   publishedAt?: string;
   imageUrl?: string;
+  authorImageUrl?: string;
   tags?: string[];
   rawPayload: unknown;
 }

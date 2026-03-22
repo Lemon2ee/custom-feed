@@ -157,7 +157,7 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
 
     let res: Response;
 
-    const icon = event.imageUrl;
+    const icon = event.authorImageUrl ?? event.imageUrl;
 
     if (parsed.encryptionKey) {
       const payload: Record<string, unknown> = {

@@ -12,6 +12,7 @@ interface NormalizeArgs {
   author?: string;
   publishedAt?: string;
   imageUrl?: string;
+  authorImageUrl?: string;
   tags?: string[];
   rawPayload: unknown;
 }
@@ -30,6 +31,7 @@ export function normalizeEvent(args: NormalizeArgs): NormalizedEvent {
     author: args.author,
     publishedAt: args.publishedAt,
     imageUrl: args.imageUrl,
+    authorImageUrl: args.authorImageUrl,
     tags: args.tags ?? [],
     rawPayload: args.rawPayload,
     createdAt: now,

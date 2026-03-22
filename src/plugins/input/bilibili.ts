@@ -180,6 +180,9 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
         const cover = archive.cover
           ? archive.cover.startsWith("//") ? `https:${archive.cover}` : archive.cover
           : undefined;
+        const face = author?.face
+          ? author.face.startsWith("//") ? `https:${author.face}` : author.face
+          : undefined;
 
         items.push({
           externalItemId: archive.bvid,
@@ -189,6 +192,7 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
           author: author?.name,
           publishedAt,
           imageUrl: cover,
+          authorImageUrl: face,
           tags: ["video"],
           rawPayload: item,
         });

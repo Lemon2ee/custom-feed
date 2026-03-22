@@ -92,6 +92,7 @@ export async function runSourcePoll(
       author: item.author,
       publishedAt: item.publishedAt,
       imageUrl: item.imageUrl,
+      authorImageUrl: item.authorImageUrl,
       tags: item.tags,
       rawPayload: item.rawPayload,
     });
