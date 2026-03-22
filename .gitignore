@@ -48,3 +48,6 @@ wrangler.toml
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local stuff
+TODO.md
