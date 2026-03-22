@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, Cable, PlugZap } from "lucide-react";
+import { BellRing, Cable, ChevronDown, ChevronRight, PlugZap, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -119,6 +119,8 @@ export function Dashboard() {
   );
   const [outputConfig, setOutputConfig] = useState<Record<string, string>>({});
   const [sourceEdits, setSourceEdits] = useState<Record<string, SourceEditState>>({});
+  const [expandedSourceIds, setExpandedSourceIds] = useState<Set<string>>(new Set());
+  const [sourceSearchQuery, setSourceSearchQuery] = useState("");
   const [newSourcePollInterval, setNewSourcePollInterval] = useState("300");
   const [autoPoll, setAutoPoll] = useState<AutoPollStatus>({
     running: false,
@@ -239,6 +241,17 @@ export function Dashboard() {
 
   const selectedInput = catalog.inputs.find((item) => item.id === sourceConnectorId);
   const selectedOutput = catalog.outputs.find((item) => item.id === outputConnectorId);
+
+  const filteredSources = sources.filter((source) => {
+    if (!sourceSearchQuery.trim()) return true;
+    const q = sourceSearchQuery.toLowerCase();
+    if (source.name.toLowerCase().includes(q)) return true;
+    if (source.pluginId.toLowerCase().includes(q)) return true;
+    if (source.id.toLowerCase().includes(q)) return true;
+    return Object.values(source.config).some(
+      (v) => typeof v === "string" && v.toLowerCase().includes(q),
+    );
+  });
 
   async function createSource() {
     if (!selectedInput) return;
@@ -577,7 +590,21 @@ export function Dashboard() {
               <p className="text-sm text-zinc-500">No sources yet.</p>
             ) : (
               <div className="space-y-3">
-                {sources.map((source) => {
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-400" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search by name, plugin, or config value…"
+                    value={sourceSearchQuery}
+                    onChange={(event) => setSourceSearchQuery(event.target.value)}
+                  />
+                </div>
+                {filteredSources.length === 0 && (
+                  <p className="text-sm text-zinc-500">
+                    No sources match &ldquo;{sourceSearchQuery}&rdquo;
+                  </p>
+                )}
+                {filteredSources.map((source) => {
                   const edits = sourceEdits[source.id] ?? {
                     name: source.name,
                     includeKeywords: "",
@@ -585,110 +612,134 @@ export function Dashboard() {
                     outputIds: source.outputIds ?? [],
                     pollIntervalSec: String(source.pollIntervalSec ?? 300),
                   };
+                  const isExpanded = expandedSourceIds.has(source.id);
                   return (
                     <div
                       key={source.id}
-                      className="space-y-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+                      className="rounded-md border border-zinc-200 dark:border-zinc-800"
                     >
-                      <p className="text-xs text-zinc-500">
-                        {source.pluginId} ({source.id.slice(0, 6)})
-                      </p>
-                      <Input
-                        value={edits.name}
-                        placeholder="Source name"
-                        onChange={(event) =>
-                          setSourceEdits((prev) => ({
-                            ...prev,
-                            [source.id]: { ...edits, name: event.target.value },
-                          }))
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 p-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+                        onClick={() =>
+                          setExpandedSourceIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(source.id)) next.delete(source.id);
+                            else next.add(source.id);
+                            return next;
+                          })
                         }
-                      />
-                      <Input
-                        value={edits.includeKeywords}
-                        placeholder="Include keywords (comma-separated)"
-                        onChange={(event) =>
-                          setSourceEdits((prev) => ({
-                            ...prev,
-                            [source.id]: {
-                              ...edits,
-                              includeKeywords: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                      <Input
-                        value={edits.excludeKeywords}
-                        placeholder="Exclude keywords (comma-separated)"
-                        onChange={(event) =>
-                          setSourceEdits((prev) => ({
-                            ...prev,
-                            [source.id]: {
-                              ...edits,
-                              excludeKeywords: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                      <div className="space-y-1">
-                        <label className="text-xs text-zinc-500">Poll Interval (seconds)</label>
-                        <Input
-                          type="number"
-                          min={10}
-                          value={edits.pollIntervalSec}
-                          onChange={(event) =>
-                            setSourceEdits((prev) => ({
-                              ...prev,
-                              [source.id]: {
-                                ...edits,
-                                pollIntervalSec: event.target.value,
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
-                        <p className="text-xs text-zinc-500">Route this source to outputs</p>
-                        {outputs.length === 0 ? (
-                          <p className="text-xs text-zinc-500">No outputs available yet.</p>
-                        ) : (
-                          outputs.map((output) => (
-                            <label key={output.id} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={edits.outputIds.includes(output.id)}
-                                onChange={(event) =>
-                                  setSourceEdits((prev) => ({
-                                    ...prev,
-                                    [source.id]: {
-                                      ...edits,
-                                      outputIds: event.target.checked
-                                        ? [...edits.outputIds, output.id]
-                                        : edits.outputIds.filter((id) => id !== output.id),
-                                    },
-                                  }))
-                                }
-                              />
-                              <span>
-                                {output.pluginId} ({output.id.slice(0, 6)})
-                              </span>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="secondary"
-                          onClick={() => void saveSourceEdits(source.id)}
-                        >
-                          Save Source
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          onClick={() => void deleteSource(source.id)}
-                        >
-                          Delete Source
-                        </Button>
-                      </div>
+                      >
+                        {isExpanded
+                          ? <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400" />
+                          : <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />}
+                        <span className="font-medium text-sm truncate">
+                          {source.name || source.pluginId}
+                        </span>
+                        <span className="ml-auto text-xs text-zinc-500 shrink-0">
+                          {source.pluginId} · {source.id.slice(0, 6)}
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="space-y-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
+                          <Input
+                            value={edits.name}
+                            placeholder="Source name"
+                            onChange={(event) =>
+                              setSourceEdits((prev) => ({
+                                ...prev,
+                                [source.id]: { ...edits, name: event.target.value },
+                              }))
+                            }
+                          />
+                          <Input
+                            value={edits.includeKeywords}
+                            placeholder="Include keywords (comma-separated)"
+                            onChange={(event) =>
+                              setSourceEdits((prev) => ({
+                                ...prev,
+                                [source.id]: {
+                                  ...edits,
+                                  includeKeywords: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                          <Input
+                            value={edits.excludeKeywords}
+                            placeholder="Exclude keywords (comma-separated)"
+                            onChange={(event) =>
+                              setSourceEdits((prev) => ({
+                                ...prev,
+                                [source.id]: {
+                                  ...edits,
+                                  excludeKeywords: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                          <div className="space-y-1">
+                            <label className="text-xs text-zinc-500">Poll Interval (seconds)</label>
+                            <Input
+                              type="number"
+                              min={10}
+                              value={edits.pollIntervalSec}
+                              onChange={(event) =>
+                                setSourceEdits((prev) => ({
+                                  ...prev,
+                                  [source.id]: {
+                                    ...edits,
+                                    pollIntervalSec: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
+                            <p className="text-xs text-zinc-500">Route this source to outputs</p>
+                            {outputs.length === 0 ? (
+                              <p className="text-xs text-zinc-500">No outputs available yet.</p>
+                            ) : (
+                              outputs.map((output) => (
+                                <label key={output.id} className="flex items-center gap-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={edits.outputIds.includes(output.id)}
+                                    onChange={(event) =>
+                                      setSourceEdits((prev) => ({
+                                        ...prev,
+                                        [source.id]: {
+                                          ...edits,
+                                          outputIds: event.target.checked
+                                            ? [...edits.outputIds, output.id]
+                                            : edits.outputIds.filter((id) => id !== output.id),
+                                        },
+                                      }))
+                                    }
+                                  />
+                                  <span>
+                                    {output.pluginId} ({output.id.slice(0, 6)})
+                                  </span>
+                                </label>
+                              ))
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="secondary"
+                              onClick={() => void saveSourceEdits(source.id)}
+                            >
+                              Save Source
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              onClick={() => void deleteSource(source.id)}
+                            >
+                              Delete Source
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

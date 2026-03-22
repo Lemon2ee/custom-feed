@@ -118,6 +118,10 @@ export const youtubeInputConnector: InputConnector<YouTubeConfig> = {
           : undefined;
         const title = item.title ?? "Untitled video";
         const tags = title.toLowerCase().includes("vlog") ? ["vlog"] : ["video"];
+        const videoId = item.id?.replace("yt:video:", "");
+        const imageUrl = videoId
+          ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+          : undefined;
         return {
           externalItemId: item.guid ?? item.id ?? item.link ?? title,
           title,
@@ -125,6 +129,7 @@ export const youtubeInputConnector: InputConnector<YouTubeConfig> = {
           contentText: item.contentSnippet ?? item.content,
           author: item.creator ?? item.author,
           publishedAt,
+          imageUrl,
           tags,
           rawPayload: item,
         };

@@ -18,6 +18,7 @@ export interface ExternalItem {
   contentText?: string;
   author?: string;
   publishedAt?: string;
+  imageUrl?: string;
   tags?: string[];
   rawPayload: unknown;
 }

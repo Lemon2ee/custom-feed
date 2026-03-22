@@ -1,6 +1,7 @@
 import type { ConnectorRegistry } from "@/src/core/pipeline/orchestrator";
 import { rssInputConnector } from "./input/rss";
 import { youtubeInputConnector } from "./input/youtube";
+import { bilibiliInputConnector } from "./input/bilibili";
 import { ntfyOutputConnector } from "./output/ntfy";
 import { barkOutputConnector } from "./output/bark";
 
@@ -26,6 +27,7 @@ export const connectorRegistry: ConnectorRegistry = {
   inputs: {
     [rssInputConnector.id]: rssInputConnector,
     [youtubeInputConnector.id]: youtubeInputConnector,
+    [bilibiliInputConnector.id]: bilibiliInputConnector,
   },
   outputs: {
     [ntfyOutputConnector.id]: ntfyOutputConnector,
@@ -79,6 +81,28 @@ export const connectorCatalog: {
           type: "number",
           required: true,
           placeholder: "20",
+        },
+      ],
+    },
+    {
+      id: "bilibili",
+      kind: "input",
+      name: "Bilibili Channel",
+      description: "Polls a Bilibili user's uploaded videos.",
+      configFields: [
+        {
+          key: "spaceUrl",
+          label: "Space URL or UID",
+          type: "text",
+          required: true,
+          placeholder: "https://space.bilibili.com/12345 or 12345",
+        },
+        {
+          key: "limit",
+          label: "Max Items",
+          type: "number",
+          required: true,
+          placeholder: "30",
         },
       ],
     },
@@ -139,6 +163,27 @@ export const connectorCatalog: {
           type: "text",
           required: false,
           placeholder: "feeds",
+        },
+        {
+          key: "encryptionAlgorithm",
+          label: "Encryption Algorithm (optional)",
+          type: "text",
+          required: false,
+          placeholder: "aes-256-cbc",
+        },
+        {
+          key: "encryptionKey",
+          label: "Encryption Key (optional)",
+          type: "password",
+          required: false,
+          placeholder: "32-byte key (or 16/24 for 128/192-bit)",
+        },
+        {
+          key: "encryptionIv",
+          label: "Encryption IV (optional)",
+          type: "password",
+          required: false,
+          placeholder: "16-byte IV, random if omitted",
         },
       ],
     },

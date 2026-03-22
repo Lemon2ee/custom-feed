@@ -77,11 +77,10 @@ export async function runSourcePoll(
     if (!matchesSourceFilter(item, source.filter)) {
       continue;
     }
-    const sourceType = (["rss", "youtube", "stock", "webhook", "custom"].includes(
-      connectorId,
-    )
-      ? connectorId
-      : "custom") as "rss" | "youtube" | "stock" | "webhook" | "custom";
+    const knownSourceTypes = ["rss", "youtube", "bilibili", "stock", "webhook", "custom"] as const;
+    const sourceType = (knownSourceTypes as readonly string[]).includes(connectorId)
+      ? (connectorId as (typeof knownSourceTypes)[number])
+      : "custom";
     const event = normalizeEvent({
       workspaceId,
       sourceId,
@@ -92,6 +91,7 @@ export async function runSourcePoll(
       contentText: item.contentText,
       author: item.author,
       publishedAt: item.publishedAt,
+      imageUrl: item.imageUrl,
       tags: item.tags,
       rawPayload: item.rawPayload,
     });

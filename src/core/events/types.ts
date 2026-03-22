@@ -1,6 +1,7 @@
 export type SourceType =
   | "rss"
   | "youtube"
+  | "bilibili"
   | "stock"
   | "webhook"
   | "custom";
@@ -16,6 +17,7 @@ export interface NormalizedEvent {
   contentText?: string;
   author?: string;
   publishedAt?: string;
+  imageUrl?: string;
   tags: string[];
   rawPayload: unknown;
   createdAt: string;

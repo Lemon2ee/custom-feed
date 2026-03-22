@@ -11,6 +11,7 @@ interface NormalizeArgs {
   contentText?: string;
   author?: string;
   publishedAt?: string;
+  imageUrl?: string;
   tags?: string[];
   rawPayload: unknown;
 }
@@ -28,6 +29,7 @@ export function normalizeEvent(args: NormalizeArgs): NormalizedEvent {
     contentText: args.contentText,
     author: args.author,
     publishedAt: args.publishedAt,
+    imageUrl: args.imageUrl,
     tags: args.tags ?? [],
     rawPayload: args.rawPayload,
     createdAt: now,
