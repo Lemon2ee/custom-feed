@@ -83,6 +83,56 @@ async function getOrCreateCookie(): Promise<string> {
   return cachedCookie;
 }
 
+// ── User face cache ─────────────────────────────────────────────
+// Space Arc Search and App Archive don't reliably return the author
+// avatar. We fetch it once via a lightweight card API and cache it.
+
+let cachedFaceUrl: string | undefined;
+let cachedFaceMid: string | undefined;
+
+async function fetchUserFace(mid: string): Promise<string | undefined> {
+  if (cachedFaceMid === mid && cachedFaceUrl !== undefined) return cachedFaceUrl;
+
+  try {
+    const cookie = await getOrCreateCookie();
+    const res = await fetch(
+      `https://api.bilibili.com/x/web-interface/card?mid=${encodeURIComponent(mid)}`,
+      {
+        headers: {
+          "User-Agent": UA,
+          Referer: "https://www.bilibili.com/",
+          Cookie: cookie,
+        },
+      },
+    );
+    if (res.ok) {
+      const json = (await res.json()) as {
+        code?: number;
+        data?: { card?: { face?: string } };
+      };
+      if (json.code === 0 && json.data?.card?.face) {
+        cachedFaceUrl = prefixUrl(json.data.card.face);
+        cachedFaceMid = mid;
+        return cachedFaceUrl;
+      }
+    }
+  } catch {
+    // non-critical — notification just won't have an avatar icon
+  }
+
+  return undefined;
+}
+
+function backfillAuthorImage(
+  items: ExternalItem[],
+  faceUrl: string | undefined,
+): void {
+  if (!faceUrl) return;
+  for (const item of items) {
+    if (!item.authorImageUrl) item.authorImageUrl = faceUrl;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Strategy 1 — Space Arc Search (lightest, single request)
 // Uses order_avoided=true to bypass WBI requirement.
@@ -453,6 +503,13 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
             previousErrors: errors,
           });
         }
+
+        const needsFace = result.items.some((i) => !i.authorImageUrl);
+        if (needsFace) {
+          const face = await fetchUserFace(mid);
+          backfillAuthorImage(result.items, face);
+        }
+
         return result;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

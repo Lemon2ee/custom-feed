@@ -4,7 +4,7 @@ import { normalizeEvent } from "../events/normalize";
 import { logger } from "../observability/logger";
 import { getRepository } from "@/src/db/repositories";
 
-function matchesSourceFilter(
+export function matchesSourceFilter(
   item: {
     title: string;
     contentText?: string;

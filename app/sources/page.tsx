@@ -603,6 +603,7 @@ export default function SourcesPage() {
                                               href={item.url}
                                               target="_blank"
                                               rel="noopener noreferrer"
+                                              title="Open in new tab"
                                               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
                                             >
                                               <ExternalLink className="h-3.5 w-3.5" />
@@ -616,7 +617,7 @@ export default function SourcesPage() {
                                             title={
                                               source.outputIds.length === 0
                                                 ? "No outputs configured"
-                                                : "Send to configured outputs"
+                                                : "Trigger test notification"
                                             }
                                             onClick={() =>
                                               void handleTestDelivery(

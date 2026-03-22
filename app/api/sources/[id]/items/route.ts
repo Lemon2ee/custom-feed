@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getRepository } from "@/src/db/repositories";
 import { connectorRegistry } from "@/src/plugins/registry";
 import { DEFAULT_WORKSPACE_ID } from "@/src/core/constants";
+import { matchesSourceFilter } from "@/src/core/pipeline/orchestrator";
 
 export async function GET(
   _request: Request,
@@ -36,7 +37,10 @@ export async function GET(
       { workspaceId: DEFAULT_WORKSPACE_ID, sourceId: id, cursor: source.lastCursor },
       source.config,
     );
-    return NextResponse.json({ data: result.items });
+    const filtered = result.items.filter((item) =>
+      matchesSourceFilter(item, source.filter),
+    );
+    return NextResponse.json({ data: filtered });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `poll failed: ${msg}` }, { status: 502 });
