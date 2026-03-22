@@ -134,66 +134,76 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
     const parsed = configSchema.parse(config);
     const mid = resolveUid(parsed);
     const cookie = await getCookie();
+    const limit = parsed.limit;
+    const MAX_PAGES = 5;
 
-    const params = new URLSearchParams({
-      host_mid: mid,
-      timezone_offset: "-480",
-    });
-    if (context.cursor) {
-      params.set("offset", context.cursor);
-    }
-
-    const res = await fetch(`${FEED_URL}?${params}`, {
-      headers: {
-        "User-Agent": UA,
-        Referer: `https://space.bilibili.com/${mid}/dynamic`,
-        Cookie: cookie,
-      },
-    });
-
-    if (!res.ok) {
-      throw new Error(`bilibili dynamic feed API returned ${res.status}`);
-    }
-
-    const json = (await res.json()) as DynamicFeedResponse;
-    if (json.code !== 0) {
-      throw new Error(`bilibili API error ${json.code}: ${json.message}`);
-    }
-
-    const dynamicItems = json.data?.items ?? [];
     const items: ExternalItem[] = [];
+    let offset: string | undefined = context.cursor;
 
-    for (const item of dynamicItems) {
-      if (item.type !== "DYNAMIC_TYPE_AV") continue;
-      const archive = item.modules.module_dynamic?.major?.archive;
-      if (!archive) continue;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const params = new URLSearchParams({
+        host_mid: mid,
+        timezone_offset: "-480",
+      });
+      if (offset) {
+        params.set("offset", offset);
+      }
 
-      const author = item.modules.module_author;
-      const publishedAt = author?.pub_ts
-        ? new Date(author.pub_ts * 1000).toISOString()
-        : undefined;
-      const cover = archive.cover
-        ? archive.cover.startsWith("//") ? `https:${archive.cover}` : archive.cover
-        : undefined;
-
-      items.push({
-        externalItemId: archive.bvid,
-        title: archive.title,
-        url: `https://www.bilibili.com/video/${archive.bvid}`,
-        contentText: archive.desc,
-        author: author?.name,
-        publishedAt,
-        imageUrl: cover,
-        tags: ["video"],
-        rawPayload: item,
+      const res = await fetch(`${FEED_URL}?${params}`, {
+        headers: {
+          "User-Agent": UA,
+          Referer: `https://space.bilibili.com/${mid}/dynamic`,
+          Cookie: cookie,
+        },
       });
 
-      if (items.length >= parsed.limit) break;
+      if (!res.ok) {
+        throw new Error(`bilibili dynamic feed API returned ${res.status}`);
+      }
+
+      const json = (await res.json()) as DynamicFeedResponse;
+      if (json.code !== 0) {
+        throw new Error(`bilibili API error ${json.code}: ${json.message}`);
+      }
+
+      const dynamicItems = json.data?.items ?? [];
+
+      for (const item of dynamicItems) {
+        if (item.type !== "DYNAMIC_TYPE_AV") continue;
+        const archive = item.modules.module_dynamic?.major?.archive;
+        if (!archive) continue;
+
+        const author = item.modules.module_author;
+        const publishedAt = author?.pub_ts
+          ? new Date(author.pub_ts * 1000).toISOString()
+          : undefined;
+        const cover = archive.cover
+          ? archive.cover.startsWith("//") ? `https:${archive.cover}` : archive.cover
+          : undefined;
+
+        items.push({
+          externalItemId: archive.bvid,
+          title: archive.title,
+          url: `https://www.bilibili.com/video/${archive.bvid}`,
+          contentText: archive.desc,
+          author: author?.name,
+          publishedAt,
+          imageUrl: cover,
+          tags: ["video"],
+          rawPayload: item,
+        });
+
+        if (items.length >= limit) break;
+      }
+
+      offset = json.data?.offset;
+
+      if (items.length >= limit || !json.data?.has_more || !offset) break;
     }
 
     return {
       items,
-      nextCursor: json.data?.offset,
+      nextCursor: offset,
     };
   },
 };
