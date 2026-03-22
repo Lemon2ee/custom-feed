@@ -31,13 +31,6 @@ export interface EventRecord {
   publishedAt?: string;
 }
 
-export interface PluginRecord {
-  id: string;
-  pluginId: string;
-  version: string;
-  enabled: boolean;
-}
-
 export type FieldType = "text" | "url" | "number" | "password";
 
 export interface ConnectorConfigField {
@@ -163,7 +156,6 @@ export function useFeedApi() {
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [outputs, setOutputs] = useState<OutputRecord[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
-  const [plugins, setPlugins] = useState<PluginRecord[]>([]);
   const [catalog, setCatalog] = useState<ConnectorCatalog>({
     inputs: [],
     outputs: [],
@@ -180,14 +172,12 @@ export function useFeedApi() {
       sourcesRes,
       outputsRes,
       eventsRes,
-      pluginsRes,
       catalogRes,
       autoPollRes,
     ] = await Promise.all([
       jsonFetch<{ data: SourceRecord[] }>("/api/sources"),
       jsonFetch<{ data: OutputRecord[] }>("/api/outputs"),
       jsonFetch<{ data: EventRecord[] }>("/api/events"),
-      jsonFetch<{ data: PluginRecord[] }>("/api/plugins"),
       jsonFetch<{ data: ConnectorCatalog }>("/api/catalog"),
       jsonFetch<{ data: AutoPollStatus }>("/api/workers/auto-poll"),
     ]);
@@ -199,7 +189,6 @@ export function useFeedApi() {
     setSources(sourcesRes.data);
     setOutputs(outputsRes.data);
     setEvents(eventsRes.data);
-    setPlugins(pluginsRes.data);
     setCatalog(safeCatalog);
     setLoading(false);
   }, []);
@@ -392,7 +381,6 @@ export function useFeedApi() {
     sources,
     outputs,
     events,
-    plugins,
     catalog,
     autoPoll,
     refresh,

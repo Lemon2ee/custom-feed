@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { href: "/sources", label: "Sources", icon: Cable },
   { href: "/outputs", label: "Outputs", icon: BellRing },
   { href: "/events", label: "Events", icon: Newspaper },
-  { href: "/plugins", label: "Plugins", icon: Puzzle },
+  { href: "/plugins", label: "Connectors", icon: Puzzle },
 ] as const;
 
 export function Sidebar() {

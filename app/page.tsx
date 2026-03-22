@@ -1,7 +1,7 @@
 "use client";
 
 import { useFeedApi } from "@/hooks/use-feed-api";
-import { Cable, BellRing, PlugZap, Newspaper } from "lucide-react";
+import { Cable, BellRing, Puzzle, PlugZap, Newspaper } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ export default function OverviewPage() {
     sources,
     outputs,
     events,
-    plugins,
+    catalog,
     autoPoll,
     runWorkers,
     toggleAutoPoll,
@@ -95,11 +95,13 @@ export default function OverviewPage() {
               <Card className="transition-colors group-hover:border-zinc-400 dark:group-hover:border-zinc-600">
                 <CardContent className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-100 dark:bg-zinc-800">
-                    <PlugZap className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                    <Puzzle className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
                   </div>
                   <div>
-                    <p className="text-2xl font-semibold">{plugins.length}</p>
-                    <p className="text-xs text-zinc-500">Plugins</p>
+                    <p className="text-2xl font-semibold">
+                      {catalog.inputs.length + catalog.outputs.length}
+                    </p>
+                    <p className="text-xs text-zinc-500">Connectors</p>
                   </div>
                 </CardContent>
               </Card>

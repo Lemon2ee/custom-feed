@@ -109,27 +109,6 @@ export const deliveries = sqliteTable(
   }),
 );
 
-export const pluginInstalls = sqliteTable(
-  "plugin_installs",
-  {
-    id: text("id").primaryKey(),
-    workspaceId: text("workspace_id").notNull(),
-    pluginId: text("plugin_id").notNull(),
-    version: text("version").notNull(),
-    manifestJson: text("manifest_json").notNull(),
-    artifactUrl: text("artifact_url").notNull(),
-    integrityHash: text("integrity_hash").notNull(),
-    signature: text("signature").notNull(),
-    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-  },
-  (table) => ({
-    workspacePluginUnique: uniqueIndex("plugin_installs_workspace_plugin_uq").on(
-      table.workspaceId,
-      table.pluginId,
-    ),
-  }),
-);
-
 export const workspaceSettings = sqliteTable(
   "workspace_settings",
   {
@@ -142,10 +121,3 @@ export const workspaceSettings = sqliteTable(
   }),
 );
 
-export const pluginSecrets = sqliteTable("plugin_secrets", {
-  id: text("id").primaryKey(),
-  workspaceId: text("workspace_id").notNull(),
-  pluginId: text("plugin_id").notNull(),
-  key: text("key").notNull(),
-  encryptedValue: text("encrypted_value").notNull(),
-});
