@@ -73,6 +73,8 @@ export async function runSourcePoll(
     });
     return;
   }
+  const isInitialSync = !source.lastCursor;
+
   for (const item of polled.items) {
     if (!matchesSourceFilter(item, source.filter)) {
       continue;
@@ -99,6 +101,8 @@ export async function runSourcePoll(
     const inserted = await repo.upsertEvent(event);
     if (!inserted.inserted) continue;
 
+    if (isInitialSync) continue;
+
     for (const outputId of source.outputIds) {
       const deliveryId = randomUUID();
       await repo.upsertDelivery({
@@ -118,6 +122,7 @@ export async function runSourcePoll(
     sourceId,
     connectorId,
     polledItems: polled.items.length,
+    initialSync: isInitialSync,
   });
 }
 

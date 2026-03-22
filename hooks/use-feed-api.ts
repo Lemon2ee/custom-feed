@@ -66,6 +66,7 @@ export interface SourceEditState {
   excludeKeywords: string;
   outputIds: string[];
   pollIntervalSec: string;
+  config: Record<string, string>;
 }
 
 export interface AutoPollStatus {
@@ -234,6 +235,7 @@ export function useFeedApi() {
         excludeKeywords: string[];
       };
       pollIntervalSec?: number;
+      config?: Record<string, string | number>;
     },
   ) {
     await jsonFetch(`/api/sources/${sourceId}`, {

@@ -82,6 +82,9 @@ export default function SourcesPage() {
         excludeKeywords: (source.filter?.excludeKeywords ?? []).join(", "),
         outputIds: source.outputIds ?? [],
         pollIntervalSec: String(source.pollIntervalSec ?? 300),
+        config: Object.fromEntries(
+          Object.entries(source.config).map(([k, v]) => [k, String(v ?? "")]),
+        ),
       }
     );
   }
@@ -128,6 +131,10 @@ export default function SourcesPage() {
   async function handleSaveEdits(sourceId: string) {
     const edits = sourceEdits[sourceId];
     if (!edits) return;
+    const source = sources.find((s) => s.id === sourceId);
+    const inputCatalog = source
+      ? catalog.inputs.find((c) => c.id === source.pluginId)
+      : undefined;
     const pollSec = Number(edits.pollIntervalSec);
     await saveSourceEdits(sourceId, {
       name: edits.name.trim() || undefined,
@@ -138,6 +145,9 @@ export default function SourcesPage() {
       },
       pollIntervalSec:
         Number.isFinite(pollSec) && pollSec > 0 ? pollSec : undefined,
+      config: inputCatalog
+        ? toPayloadConfig(inputCatalog.configFields, edits.config)
+        : undefined,
     });
   }
 
@@ -374,6 +384,32 @@ export default function SourcesPage() {
                             }))
                           }
                         />
+                        {catalog.inputs
+                          .find((c) => c.id === source.pluginId)
+                          ?.configFields.map((field) => (
+                            <div key={field.key} className="space-y-1">
+                              <label className="text-xs text-zinc-500">
+                                {field.label}
+                              </label>
+                              <Input
+                                type={field.type}
+                                placeholder={field.placeholder || field.label}
+                                value={edits.config[field.key] ?? ""}
+                                onChange={(e) =>
+                                  setSourceEdits((prev) => ({
+                                    ...prev,
+                                    [source.id]: {
+                                      ...edits,
+                                      config: {
+                                        ...edits.config,
+                                        [field.key]: e.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                              />
+                            </div>
+                          ))}
                         <Input
                           value={edits.includeKeywords}
                           placeholder="Include keywords (comma-separated)"
