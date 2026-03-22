@@ -15,6 +15,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Generate Cloudflare type stubs
+        run: |
+          if [ ! -f worker-configuration.d.ts ]; then
+            cat > worker-configuration.d.ts << 'STUB'
+          declare module "cloudflare:workers" {
+            const env: Record<string, unknown>;
+          }
+          declare abstract class D1Database {
+            prepare(query: string): unknown;
+            batch(statements: unknown[]): Promise<unknown[]>;
+            exec(query: string): Promise<unknown>;
+          }
+          declare abstract class Fetcher {
+            fetch(input: RequestInfo, init?: RequestInit): Promise<Response>;
+          }
+          STUB
+          fi
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
