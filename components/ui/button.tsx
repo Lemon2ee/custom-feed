@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "default" | "secondary" | "outline" | "destructive";
+  variant?: "default" | "secondary" | "outline" | "destructive" | "ghost";
 }
 
 export function Button({
@@ -23,6 +23,8 @@ export function Button({
           "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900",
         variant === "destructive" &&
           "bg-red-600 text-white hover:bg-red-500",
+        variant === "ghost" &&
+          "hover:bg-zinc-100 dark:hover:bg-zinc-800",
         className,
       )}
       {...props}
