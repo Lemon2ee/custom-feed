@@ -6,8 +6,11 @@ export const sources = sqliteTable(
   {
     id: text("id").primaryKey(),
     workspaceId: text("workspace_id").notNull(),
+    name: text("name").notNull().default(""),
     pluginId: text("plugin_id").notNull(),
     configJson: text("config_json").notNull(),
+    outputIdsJson: text("output_ids_json").notNull().default("[]"),
+    filterJson: text("filter_json"),
     pollIntervalSec: integer("poll_interval_sec").notNull().default(300),
     lastCursor: text("last_cursor"),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),

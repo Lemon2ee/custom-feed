@@ -36,6 +36,7 @@ export interface InputConnector<TConfig = Record<string, unknown>> {
 export interface OutputSendContext {
   workspaceId: string;
   outputId: string;
+  sourceName?: string;
 }
 
 export type OutputSendStatus = "sent" | "retryable_error" | "permanent_error";

@@ -1,6 +1,9 @@
+import { eq, desc } from "drizzle-orm";
+import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import type { NormalizedEvent } from "@/src/core/events/types";
 import type { Rule } from "@/src/core/rules/types";
 import { createDedupeHash } from "@/src/core/events/dedupe";
+import * as schema from "./schema";
 
 export interface SourceRecord {
   id: string;
@@ -45,6 +48,7 @@ export interface Repository {
   deleteSource(workspaceId: string, sourceId: string): Promise<void>;
   listOutputs(workspaceId: string): Promise<OutputRecord[]>;
   upsertOutput(output: OutputRecord): Promise<void>;
+  deleteOutput(workspaceId: string, outputId: string): Promise<void>;
   listRules(workspaceId: string): Promise<Rule[]>;
   upsertRule(rule: Rule): Promise<void>;
   upsertEvent(event: NormalizedEvent): Promise<{ inserted: boolean }>;
@@ -53,7 +57,325 @@ export interface Repository {
   listDeliveries(workspaceId: string): Promise<DeliveryRecord[]>;
 }
 
-class MemoryRepository implements Repository {
+// ---------------------------------------------------------------------------
+// D1 (Drizzle) implementation
+// ---------------------------------------------------------------------------
+
+type Db = DrizzleD1Database<Record<string, never>>;
+
+class D1Repository implements Repository {
+  constructor(private db: Db) {}
+
+  async listSources(workspaceId: string): Promise<SourceRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.sources)
+      .where(eq(schema.sources.workspaceId, workspaceId));
+    return rows.map(rowToSource);
+  }
+
+  async upsertSource(source: SourceRecord): Promise<void> {
+    const values = sourceToRow(source);
+    await this.db
+      .insert(schema.sources)
+      .values(values)
+      .onConflictDoUpdate({
+        target: schema.sources.id,
+        set: {
+          workspaceId: values.workspaceId,
+          name: values.name,
+          pluginId: values.pluginId,
+          configJson: values.configJson,
+          outputIdsJson: values.outputIdsJson,
+          filterJson: values.filterJson,
+          pollIntervalSec: values.pollIntervalSec,
+          lastCursor: values.lastCursor,
+          enabled: values.enabled,
+        },
+      });
+  }
+
+  async deleteSource(workspaceId: string, sourceId: string): Promise<void> {
+    const eventRows = await this.db
+      .select({ id: schema.events.id })
+      .from(schema.events)
+      .where(eq(schema.events.sourceId, sourceId));
+
+    for (const row of eventRows) {
+      await this.db
+        .delete(schema.deliveries)
+        .where(eq(schema.deliveries.eventId, row.id!));
+      await this.db.delete(schema.events).where(eq(schema.events.id, row.id!));
+    }
+
+    await this.db
+      .delete(schema.sources)
+      .where(eq(schema.sources.id, sourceId));
+  }
+
+  async listOutputs(workspaceId: string): Promise<OutputRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.outputs)
+      .where(eq(schema.outputs.workspaceId, workspaceId));
+    return rows.map(rowToOutput);
+  }
+
+  async upsertOutput(output: OutputRecord): Promise<void> {
+    const values = outputToRow(output);
+    await this.db
+      .insert(schema.outputs)
+      .values(values)
+      .onConflictDoUpdate({
+        target: schema.outputs.id,
+        set: {
+          workspaceId: values.workspaceId,
+          pluginId: values.pluginId,
+          configJson: values.configJson,
+          enabled: values.enabled,
+        },
+      });
+  }
+
+  async deleteOutput(workspaceId: string, outputId: string): Promise<void> {
+    await this.db
+      .delete(schema.outputs)
+      .where(eq(schema.outputs.id, outputId));
+  }
+
+  async listRules(workspaceId: string): Promise<Rule[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.rules)
+      .where(eq(schema.rules.workspaceId, workspaceId));
+    return rows.map(rowToRule);
+  }
+
+  async upsertRule(rule: Rule): Promise<void> {
+    const values = ruleToRow(rule);
+    await this.db
+      .insert(schema.rules)
+      .values(values)
+      .onConflictDoUpdate({
+        target: schema.rules.id,
+        set: {
+          workspaceId: values.workspaceId,
+          name: values.name,
+          priority: values.priority,
+          enabled: values.enabled,
+          matchJson: values.matchJson,
+          actionJson: values.actionJson,
+        },
+      });
+  }
+
+  async upsertEvent(event: NormalizedEvent): Promise<{ inserted: boolean }> {
+    const values = eventToRow(event);
+    const result = await this.db
+      .insert(schema.events)
+      .values(values)
+      .onConflictDoNothing()
+      .returning({ id: schema.events.id });
+    return { inserted: result.length > 0 };
+  }
+
+  async listEvents(workspaceId: string): Promise<NormalizedEvent[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.workspaceId, workspaceId))
+      .orderBy(desc(schema.events.publishedAt));
+    return rows.map(rowToEvent);
+  }
+
+  async upsertDelivery(delivery: DeliveryRecord): Promise<void> {
+    const values = deliveryToRow(delivery);
+    await this.db
+      .insert(schema.deliveries)
+      .values(values)
+      .onConflictDoUpdate({
+        target: schema.deliveries.id,
+        set: {
+          workspaceId: values.workspaceId,
+          eventId: values.eventId,
+          outputId: values.outputId,
+          status: values.status,
+          attemptCount: values.attemptCount,
+          lastError: values.lastError,
+          nextRetryAt: values.nextRetryAt,
+          sentAt: values.sentAt,
+          receiptJson: values.receiptJson,
+        },
+      });
+  }
+
+  async listDeliveries(workspaceId: string): Promise<DeliveryRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.deliveries)
+      .where(eq(schema.deliveries.workspaceId, workspaceId));
+    return rows.map(rowToDelivery);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Row <-> domain mappers
+// ---------------------------------------------------------------------------
+
+function rowToSource(row: typeof schema.sources.$inferSelect): SourceRecord {
+  return {
+    id: row.id!,
+    workspaceId: row.workspaceId,
+    name: row.name,
+    pluginId: row.pluginId,
+    config: JSON.parse(row.configJson) as Record<string, unknown>,
+    outputIds: JSON.parse(row.outputIdsJson) as string[],
+    filter: row.filterJson
+      ? (JSON.parse(row.filterJson) as SourceRecord["filter"])
+      : undefined,
+    pollIntervalSec: row.pollIntervalSec,
+    lastCursor: row.lastCursor ?? undefined,
+    enabled: row.enabled,
+  };
+}
+
+function sourceToRow(source: SourceRecord) {
+  return {
+    id: source.id,
+    workspaceId: source.workspaceId,
+    name: source.name,
+    pluginId: source.pluginId,
+    configJson: JSON.stringify(source.config),
+    outputIdsJson: JSON.stringify(source.outputIds),
+    filterJson: source.filter ? JSON.stringify(source.filter) : null,
+    pollIntervalSec: source.pollIntervalSec,
+    lastCursor: source.lastCursor ?? null,
+    enabled: source.enabled,
+  };
+}
+
+function rowToOutput(row: typeof schema.outputs.$inferSelect): OutputRecord {
+  return {
+    id: row.id!,
+    workspaceId: row.workspaceId,
+    pluginId: row.pluginId,
+    config: JSON.parse(row.configJson) as Record<string, unknown>,
+    enabled: row.enabled,
+  };
+}
+
+function outputToRow(output: OutputRecord) {
+  return {
+    id: output.id,
+    workspaceId: output.workspaceId,
+    pluginId: output.pluginId,
+    configJson: JSON.stringify(output.config),
+    enabled: output.enabled,
+  };
+}
+
+function rowToRule(row: typeof schema.rules.$inferSelect): Rule {
+  return {
+    id: row.id!,
+    workspaceId: row.workspaceId,
+    name: row.name,
+    priority: row.priority,
+    enabled: row.enabled,
+    condition: JSON.parse(row.matchJson) as Rule["condition"],
+    action: JSON.parse(row.actionJson) as Rule["action"],
+  };
+}
+
+function ruleToRow(rule: Rule) {
+  return {
+    id: rule.id,
+    workspaceId: rule.workspaceId,
+    name: rule.name,
+    priority: rule.priority,
+    enabled: rule.enabled,
+    matchJson: JSON.stringify(rule.condition),
+    actionJson: JSON.stringify(rule.action),
+  };
+}
+
+function rowToEvent(row: typeof schema.events.$inferSelect): NormalizedEvent {
+  return {
+    id: row.id!,
+    workspaceId: row.workspaceId,
+    sourceId: row.sourceId,
+    sourceType: row.sourceType as NormalizedEvent["sourceType"],
+    externalItemId: row.externalItemId,
+    title: row.title,
+    url: row.url ?? undefined,
+    contentText: row.contentText ?? undefined,
+    author: row.author ?? undefined,
+    publishedAt: row.publishedAt ?? undefined,
+    imageUrl: row.imageUrl ?? undefined,
+    tags: JSON.parse(row.tagsJson) as string[],
+    rawPayload: JSON.parse(row.rawJson) as unknown,
+    createdAt: row.createdAt,
+  };
+}
+
+function eventToRow(event: NormalizedEvent) {
+  return {
+    id: event.id,
+    workspaceId: event.workspaceId,
+    sourceId: event.sourceId,
+    sourceType: event.sourceType,
+    externalItemId: event.externalItemId,
+    dedupeHash: createDedupeHash(event),
+    title: event.title,
+    url: event.url ?? null,
+    contentText: event.contentText ?? null,
+    author: event.author ?? null,
+    publishedAt: event.publishedAt ?? null,
+    imageUrl: event.imageUrl ?? null,
+    tagsJson: JSON.stringify(event.tags),
+    rawJson: JSON.stringify(event.rawPayload),
+    createdAt: event.createdAt,
+  };
+}
+
+function rowToDelivery(
+  row: typeof schema.deliveries.$inferSelect,
+): DeliveryRecord {
+  return {
+    id: row.id!,
+    workspaceId: row.workspaceId,
+    eventId: row.eventId,
+    outputId: row.outputId,
+    status: row.status as DeliveryRecord["status"],
+    attemptCount: row.attemptCount,
+    lastError: row.lastError ?? undefined,
+    nextRetryAt: row.nextRetryAt ?? undefined,
+    sentAt: row.sentAt ?? undefined,
+    receipt: row.receiptJson
+      ? (JSON.parse(row.receiptJson) as Record<string, unknown>)
+      : undefined,
+  };
+}
+
+function deliveryToRow(delivery: DeliveryRecord) {
+  return {
+    id: delivery.id,
+    workspaceId: delivery.workspaceId,
+    eventId: delivery.eventId,
+    outputId: delivery.outputId,
+    status: delivery.status,
+    attemptCount: delivery.attemptCount,
+    lastError: delivery.lastError ?? null,
+    nextRetryAt: delivery.nextRetryAt ?? null,
+    sentAt: delivery.sentAt ?? null,
+    receiptJson: delivery.receipt ? JSON.stringify(delivery.receipt) : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// In-memory implementation (kept for tests)
+// ---------------------------------------------------------------------------
+
+export class MemoryRepository implements Repository {
   private sources = new Map<string, SourceRecord>();
   private outputs = new Map<string, OutputRecord>();
   private rules = new Map<string, Rule>();
@@ -62,7 +384,9 @@ class MemoryRepository implements Repository {
   private dedupe = new Set<string>();
 
   async listSources(workspaceId: string): Promise<SourceRecord[]> {
-    return [...this.sources.values()].filter((item) => item.workspaceId === workspaceId);
+    return [...this.sources.values()].filter(
+      (item) => item.workspaceId === workspaceId,
+    );
   }
 
   async upsertSource(source: SourceRecord): Promise<void> {
@@ -75,13 +399,19 @@ class MemoryRepository implements Repository {
     this.sources.delete(sourceId);
 
     const removedEventIds = [...this.events.values()]
-      .filter((event) => event.workspaceId === workspaceId && event.sourceId === sourceId)
+      .filter(
+        (event) =>
+          event.workspaceId === workspaceId && event.sourceId === sourceId,
+      )
       .map((event) => event.id);
 
     for (const eventId of removedEventIds) {
       this.events.delete(eventId);
       for (const [deliveryId, delivery] of this.deliveries.entries()) {
-        if (delivery.workspaceId === workspaceId && delivery.eventId === eventId) {
+        if (
+          delivery.workspaceId === workspaceId &&
+          delivery.eventId === eventId
+        ) {
           this.deliveries.delete(deliveryId);
         }
       }
@@ -89,15 +419,25 @@ class MemoryRepository implements Repository {
   }
 
   async listOutputs(workspaceId: string): Promise<OutputRecord[]> {
-    return [...this.outputs.values()].filter((item) => item.workspaceId === workspaceId);
+    return [...this.outputs.values()].filter(
+      (item) => item.workspaceId === workspaceId,
+    );
   }
 
   async upsertOutput(output: OutputRecord): Promise<void> {
     this.outputs.set(output.id, output);
   }
 
+  async deleteOutput(workspaceId: string, outputId: string): Promise<void> {
+    const output = this.outputs.get(outputId);
+    if (!output || output.workspaceId !== workspaceId) return;
+    this.outputs.delete(outputId);
+  }
+
   async listRules(workspaceId: string): Promise<Rule[]> {
-    return [...this.rules.values()].filter((item) => item.workspaceId === workspaceId);
+    return [...this.rules.values()].filter(
+      (item) => item.workspaceId === workspaceId,
+    );
   }
 
   async upsertRule(rule: Rule): Promise<void> {
@@ -117,7 +457,11 @@ class MemoryRepository implements Repository {
   async listEvents(workspaceId: string): Promise<NormalizedEvent[]> {
     return [...this.events.values()]
       .filter((item) => item.workspaceId === workspaceId)
-      .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt));
+      .sort((a, b) =>
+        (b.publishedAt ?? b.createdAt).localeCompare(
+          a.publishedAt ?? a.createdAt,
+        ),
+      );
   }
 
   async upsertDelivery(delivery: DeliveryRecord): Promise<void> {
@@ -125,12 +469,36 @@ class MemoryRepository implements Repository {
   }
 
   async listDeliveries(workspaceId: string): Promise<DeliveryRecord[]> {
-    return [...this.deliveries.values()].filter((item) => item.workspaceId === workspaceId);
+    return [...this.deliveries.values()].filter(
+      (item) => item.workspaceId === workspaceId,
+    );
   }
 }
 
-const singleton = new MemoryRepository();
+// ---------------------------------------------------------------------------
+// Factory -- resolves D1 from Cloudflare Workers env, falls back to in-memory
+// ---------------------------------------------------------------------------
+
+let _d1: D1Database | undefined;
+try {
+  const mod = await import("cloudflare:workers");
+  _d1 = (mod.env as { DB?: D1Database }).DB;
+} catch {
+  // cloudflare:workers unavailable (tests, non-CF runtimes)
+}
+
+let cachedRepo: Repository | undefined;
+
+export function createD1Repository(d1: D1Database): Repository {
+  return new D1Repository(drizzle(d1) as unknown as Db);
+}
 
 export function getRepository(): Repository {
-  return singleton;
+  if (cachedRepo) return cachedRepo;
+  if (_d1) {
+    cachedRepo = createD1Repository(_d1);
+  } else {
+    cachedRepo = new MemoryRepository();
+  }
+  return cachedRepo;
 }

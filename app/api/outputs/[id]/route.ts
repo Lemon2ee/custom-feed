@@ -28,3 +28,13 @@ export async function PATCH(
   });
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const repo = getRepository();
+  await repo.deleteOutput(DEFAULT_WORKSPACE_ID, id);
+  return NextResponse.json({ ok: true });
+}

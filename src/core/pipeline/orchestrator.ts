@@ -131,6 +131,7 @@ export async function runPendingDeliveries(
   );
   const outputs = await repo.listOutputs(workspaceId);
   const events = await repo.listEvents(workspaceId);
+  const sources = await repo.listSources(workspaceId);
 
   for (const delivery of pending) {
     const output = outputs.find((item) => item.id === delivery.outputId && item.enabled);
@@ -140,9 +141,10 @@ export async function runPendingDeliveries(
     const connector = registry.outputs[output.pluginId];
     if (!connector) continue;
 
+    const source = sources.find((item) => item.id === event.sourceId);
     const result = await connector.send(
       event,
-      { workspaceId, outputId: output.id },
+      { workspaceId, outputId: output.id, sourceName: source?.name },
       output.config,
     );
 

@@ -1,9 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { Dashboard } from "@/components/dashboard";
+import OverviewPage from "@/app/page";
 
-describe("Dashboard", () => {
-  it("renders setup cards and fetches data", async () => {
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    href,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    href: string;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+describe("OverviewPage", () => {
+  it("renders status cards and fetches data", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(JSON.stringify({ data: [] }), {
         status: 200,
@@ -11,13 +27,12 @@ describe("Dashboard", () => {
       });
     });
 
-    render(<Dashboard />);
+    render(<OverviewPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Custom Feed Middleware")).toBeInTheDocument();
-      expect(screen.getByText("Source Setup")).toBeInTheDocument();
-      expect(screen.getByText("Output Setup")).toBeInTheDocument();
-      expect(screen.getByText("Source Manager")).toBeInTheDocument();
+      expect(screen.getByText("Overview")).toBeInTheDocument();
+      expect(screen.getByText("Worker Controls")).toBeInTheDocument();
+      expect(screen.getByText("Recent Events")).toBeInTheDocument();
     });
   });
 });

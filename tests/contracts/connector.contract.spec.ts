@@ -70,7 +70,7 @@ describe("output connector contract", () => {
     const result = await barkOutputConnector.send(
       event,
       { workspaceId: "w1", outputId: "o1" },
-      { serverUrl: "https://api.day.app", deviceKey: "abc" },
+      { serverUrl: "https://api.day.app", deviceKey: "abc", encryptionAlgorithm: "aes-256-cbc" },
     );
     expect(result.status).toBe("retryable_error");
   });
@@ -86,7 +86,7 @@ describe("output connector contract", () => {
     const result = await barkOutputConnector.send(
       event,
       { workspaceId: "w1", outputId: "o1" },
-      { serverUrl: "https://api.day.app", deviceKey: "abc" },
+      { serverUrl: "https://api.day.app", deviceKey: "abc", encryptionAlgorithm: "aes-256-cbc" },
     );
     expect(result.status).toBe("permanent_error");
   });

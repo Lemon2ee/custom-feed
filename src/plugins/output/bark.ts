@@ -12,7 +12,6 @@ const configSchema = z
   .object({
     serverUrl: z.string().url().default("https://api.day.app"),
     deviceKey: z.string().min(1),
-    group: z.string().optional(),
     encryptionKey: z.string().optional(),
     encryptionIv: z.string().optional(),
     encryptionAlgorithm: z
@@ -149,11 +148,12 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
       ? { valid: true }
       : { valid: false, errors: parsed.error.issues.map((issue) => issue.message) };
   },
-  async send(event, _context, config) {
+  async send(event, context, config) {
     const parsed = configSchema.parse(config);
     const baseUrl = parsed.serverUrl.replace(/\/$/, "");
     const messageTitle = event.title || "New feed item";
     const messageBody = createMessageBody(messageTitle, event.contentText ?? event.url);
+    const group = context.sourceName;
 
     let res: Response;
 
@@ -164,7 +164,7 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
         title: messageTitle,
         body: messageBody,
       };
-      if (parsed.group) payload.group = parsed.group;
+      if (group) payload.group = group;
       if (event.url) payload.url = event.url;
       if (icon) payload.icon = icon;
 
@@ -177,24 +177,22 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
         parsed.encryptionIv,
       );
     } else {
-      // Prefer path-style endpoint since it matches common Bark usage.
       res = await sendWithPathEndpoint(
         baseUrl,
         parsed.deviceKey,
         messageTitle,
         messageBody,
-        parsed.group,
+        group,
         event.url,
         icon,
       );
       if (res.status === 404 || res.status === 405) {
-        // Fallback for servers that support only /push JSON endpoint.
         res = await sendWithPushEndpoint(
           baseUrl,
           parsed.deviceKey,
           messageTitle,
           messageBody,
-          parsed.group,
+          group,
           event.url,
           icon,
         );

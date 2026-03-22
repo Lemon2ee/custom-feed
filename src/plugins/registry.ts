@@ -158,13 +158,6 @@ export const connectorCatalog: {
           placeholder: "your-bark-device-key",
         },
         {
-          key: "group",
-          label: "Group (optional)",
-          type: "text",
-          required: false,
-          placeholder: "feeds",
-        },
-        {
           key: "encryptionAlgorithm",
           label: "Encryption Algorithm (optional)",
           type: "text",
