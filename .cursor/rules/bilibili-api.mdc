@@ -1,0 +1,65 @@
+---
+description: Bilibili unofficial API strategies, anti-bot mitigations, and fallback patterns
+globs: src/plugins/input/bilibili.ts
+alwaysApply: false
+---
+
+# Bilibili API Reference
+
+Bilibili has no official public API. All endpoints are reverse-engineered and subject to anti-bot enforcement. The primary documentation repo (SocialSisterYi/bilibili-API-collect) was archived Jan 2026 after a legal cease-and-desist.
+
+## Strategy Order (lightest → heaviest)
+
+Always try strategies from lightest to heaviest. Making many failed requests poisons the IP/cookie for subsequent strategies via rate limits.
+
+### 1. Space Arc Search — `api.bilibili.com/x/space/arc/search`
+- **Auth**: buvid cookie only (no WBI needed when `order_avoided=true`)
+- **Params**: `mid`, `ps`, `tid=0`, `pn=1`, `order=pubdate`, `order_avoided=true`, `platform=web`, `web_location=1550101`
+- **Returns**: `data.list.vlist[]` — video list with `bvid`, `title`, `pic`, `author`, `created`, `description`
+- **Gotcha**: Without `order_avoided=true`, returns `-352` (anti-spider). This param is undocumented but confirmed working without login.
+
+### 2. App Archive Cursor — `app.biliapi.com/x/v2/space/archive/cursor`
+- **Auth**: App-signed request (appkey + MD5 sign), no cookie/login
+- **Params**: `vmid` (required), `aid` (pagination), plus app params (`appkey`, `build`, `mobi_app=android`, `platform=android`, `ts`, `sign`)
+- **Signing**: sort params alphabetically, append appSecret, MD5 hash → `sign`
+- **Hosts**: try `app.biliapi.com` first (CDN proxy), then `app.bilibili.com` (failover)
+- **Returns**: `data.item[]` with `title`, `param`/`bvid`, `cover`, `author`, `ctime`
+- **Gotcha**: Returns `-400` without app params. Does not return paid/charged videos.
+
+### 3. Dynamic Feed — `api.bilibili.com/x/polymer/web-dynamic/v1/feed/space`
+- **Auth**: buvid cookie from SPI endpoint (`/x/frontend/finger/spi`)
+- **Params**: `host_mid`, `timezone_offset=-480`, `offset` (pagination)
+- **Headers**: requires `Origin`, `Referer`, `Cookie`, `User-Agent`
+- **Returns**: `data.items[]` with `type=DYNAMIC_TYPE_AV`, nested `modules.module_dynamic.major.archive`
+- **Gotcha**: Highly prone to 412 blocks from server IPs. Invalidate cookie on 412.
+
+## Common Error Codes
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| HTTP 412 | Anti-bot block | Invalidate cookie, fall to next strategy |
+| -400 | Bad request / missing params | Check required params for the endpoint |
+| -352 | Anti-spider (WBI required) | Add `order_avoided=true` or use WBI signing |
+| -799 | Rate limited | Wait, reduce request volume, try different strategy |
+
+## Cookie Generation
+
+- **SPI endpoint**: `GET api.bilibili.com/x/frontend/finger/spi` → `data.b_3` (buvid3), `data.b_4` (buvid4)
+- **Self-generated fallback**: `buvid3={uuid}infoc; b_nut=100` — works but less reliable
+- **Cache TTL**: ~25 minutes. Invalidate on 412.
+
+## App Signing (Android)
+
+```
+appkey = "4409e2ce8ffd12b8"
+appSecret = "59b43e04ad6965f34319062b478f83dd"
+sign = MD5(sortedQueryString + appSecret)
+User-Agent: "Mozilla/5.0 BiliDroid/7.70.0 (bbcallen@gmail.com) os/android"
+```
+
+## Key Principles
+
+- Minimize total requests per poll — each failed request increases rate-limit risk
+- Never retry 412 in a loop — invalidate cookie and move to next strategy
+- The dynamic feed is the richest data source but the most fragile from server environments
+- Cover images and face URLs may use protocol-relative `//` prefix — always normalize to `https:`

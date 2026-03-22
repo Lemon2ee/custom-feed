@@ -1,7 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Plus, Search } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Zap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,6 +36,7 @@ import {
   toPayloadConfig,
   splitKeywordCsv,
   type SourceEditState,
+  type SourceItem,
 } from "@/hooks/use-feed-api";
 
 export default function SourcesPage() {
@@ -38,6 +48,8 @@ export default function SourcesPage() {
     createSource,
     saveSourceEdits,
     deleteSource,
+    fetchSourceItems,
+    testSourceDelivery,
   } = useFeedApi();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -58,6 +70,9 @@ export default function SourcesPage() {
     new Set(),
   );
   const [sourceSearchQuery, setSourceSearchQuery] = useState("");
+  const [sourceItems, setSourceItems] = useState<Record<string, SourceItem[]>>({});
+  const [loadingItemsIds, setLoadingItemsIds] = useState<Set<string>>(new Set());
+  const [sendingItemKeys, setSendingItemKeys] = useState<Set<string>>(new Set());
 
   const selectedInput = catalog.inputs.find(
     (item) => item.id === sourceConnectorId,
@@ -126,6 +141,46 @@ export default function SourcesPage() {
     setNewSourceIncludeKeywords("");
     setNewSourceExcludeKeywords("");
     setNewSourcePollInterval("300");
+  }
+
+  async function handleFetchItems(sourceId: string) {
+    setLoadingItemsIds((prev) => new Set(prev).add(sourceId));
+    try {
+      const result = await fetchSourceItems(sourceId);
+      if (result.ok) {
+        setSourceItems((prev) => ({ ...prev, [sourceId]: result.items }));
+      }
+    } finally {
+      setLoadingItemsIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sourceId);
+        return next;
+      });
+    }
+  }
+
+  async function handleTestDelivery(sourceId: string, item: SourceItem) {
+    const key = `${sourceId}:${item.externalItemId}`;
+    setSendingItemKeys((prev) => new Set(prev).add(key));
+    try {
+      await testSourceDelivery(sourceId, item);
+    } finally {
+      setSendingItemKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
+  function getMaxItems(source: (typeof sources)[0]): number {
+    const limit = source.config.limit;
+    if (typeof limit === "number" && limit > 0) return limit;
+    if (typeof limit === "string") {
+      const n = Number(limit);
+      if (n > 0) return n;
+    }
+    return 20;
   }
 
   async function handleSaveEdits(sourceId: string) {
@@ -493,6 +548,102 @@ export default function SourcesPage() {
                             ))
                           )}
                         </div>
+                        <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium text-zinc-500">
+                              Recent Items
+                            </p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={loadingItemsIds.has(source.id)}
+                              onClick={() =>
+                                void handleFetchItems(source.id)
+                              }
+                            >
+                              {loadingItemsIds.has(source.id) ? (
+                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="mr-1 h-3 w-3" />
+                              )}
+                              Fetch
+                            </Button>
+                          </div>
+                          {sourceItems[source.id] ? (
+                            sourceItems[source.id].length === 0 ? (
+                              <p className="text-xs text-zinc-400">
+                                No items returned.
+                              </p>
+                            ) : (
+                              <div className="max-h-64 space-y-1 overflow-y-auto">
+                                {sourceItems[source.id]
+                                  .slice(0, getMaxItems(source))
+                                  .map((item, idx) => {
+                                    const key = `${source.id}:${item.externalItemId}`;
+                                    const isSending = sendingItemKeys.has(key);
+                                    return (
+                                      <div
+                                        key={item.externalItemId ?? idx}
+                                        className="flex items-start gap-2 rounded border border-zinc-100 p-2 dark:border-zinc-800"
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-xs font-medium">
+                                            {item.title}
+                                          </p>
+                                          {item.author && (
+                                            <p className="truncate text-[11px] text-zinc-400">
+                                              {item.author}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-1">
+                                          {item.url && (
+                                            <a
+                                              href={item.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                                            >
+                                              <ExternalLink className="h-3.5 w-3.5" />
+                                            </a>
+                                          )}
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 w-7 p-0"
+                                            disabled={isSending || source.outputIds.length === 0}
+                                            title={
+                                              source.outputIds.length === 0
+                                                ? "No outputs configured"
+                                                : "Send to configured outputs"
+                                            }
+                                            onClick={() =>
+                                              void handleTestDelivery(
+                                                source.id,
+                                                item,
+                                              )
+                                            }
+                                          >
+                                            {isSending ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Zap className="h-3.5 w-3.5" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            )
+                          ) : (
+                            <p className="text-xs text-zinc-400">
+                              Click Fetch to load recent items from this source.
+                            </p>
+                          )}
+                        </div>
+
                         <div className="flex gap-2">
                           <Button
                             variant="secondary"

@@ -69,6 +69,18 @@ export interface SourceEditState {
   config: Record<string, string>;
 }
 
+export interface SourceItem {
+  externalItemId: string;
+  title: string;
+  url?: string;
+  contentText?: string;
+  author?: string;
+  publishedAt?: string;
+  imageUrl?: string;
+  authorImageUrl?: string;
+  tags?: string[];
+}
+
 export interface AutoPollStatus {
   running: boolean;
   tickIntervalSec: number;
@@ -314,6 +326,56 @@ export function useFeedApi() {
     }
   }
 
+  async function fetchSourceItems(
+    sourceId: string,
+  ): Promise<{ ok: boolean; items: SourceItem[]; error?: string }> {
+    try {
+      const res = await fetch(`/api/sources/${sourceId}/items`);
+      const body = (await res.json()) as { data?: SourceItem[]; error?: string };
+      if (!res.ok) {
+        const msg = body.error ?? `Failed to fetch items (${res.status})`;
+        setStatusMessage(msg);
+        return { ok: false, items: [], error: msg };
+      }
+      return { ok: true, items: body.data ?? [] };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setStatusMessage(`Fetch items failed: ${msg}`);
+      return { ok: false, items: [], error: msg };
+    }
+  }
+
+  async function testSourceDelivery(
+    sourceId: string,
+    item: SourceItem,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(`/api/sources/${sourceId}/test-delivery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        results?: Array<{ status: string; error?: string }>;
+      };
+      if (body.ok) {
+        setStatusMessage("Test delivery sent!");
+        return { ok: true };
+      }
+      const failedResults = body.results?.filter((r) => r.status !== "sent") ?? [];
+      const msg = failedResults.length > 0
+        ? failedResults.map((r) => r.error).filter(Boolean).join("; ") || "Some outputs failed"
+        : `Test delivery failed (${res.status})`;
+      setStatusMessage(`Test delivery: ${msg}`);
+      return { ok: false, error: msg };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setStatusMessage(`Test delivery failed: ${msg}`);
+      return { ok: false, error: msg };
+    }
+  }
+
   async function runWorkers() {
     await jsonFetch("/api/workers/run", { method: "POST" });
     setStatusMessage("Ingest + delivery workers executed.");
@@ -349,6 +411,8 @@ export function useFeedApi() {
     updateOutput,
     deleteOutput,
     testOutput,
+    fetchSourceItems,
+    testSourceDelivery,
     runWorkers,
     toggleAutoPoll,
   };
