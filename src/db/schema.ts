@@ -13,6 +13,7 @@ export const sources = sqliteTable(
     filterJson: text("filter_json"),
     pollIntervalSec: integer("poll_interval_sec").notNull().default(300),
     lastCursor: text("last_cursor"),
+    lastPolledAt: text("last_polled_at"),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
@@ -126,6 +127,18 @@ export const pluginInstalls = sqliteTable(
       table.workspaceId,
       table.pluginId,
     ),
+  }),
+);
+
+export const workspaceSettings = sqliteTable(
+  "workspace_settings",
+  {
+    workspaceId: text("workspace_id").notNull(),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+  },
+  (table) => ({
+    pk: uniqueIndex("workspace_settings_pk").on(table.workspaceId, table.key),
   }),
 );
 

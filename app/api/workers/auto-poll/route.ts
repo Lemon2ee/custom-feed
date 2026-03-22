@@ -7,6 +7,7 @@ const postSchema = z.object({
 });
 
 export async function GET() {
+  await autoPollManager.restoreIfNeeded();
   const status = await autoPollManager.getStatusAsync();
   return NextResponse.json({ data: status });
 }

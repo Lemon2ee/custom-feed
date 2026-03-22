@@ -429,16 +429,21 @@ export default function SourcesPage() {
 
                     {isExpanded && (
                       <div className="space-y-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
-                        <Input
-                          value={edits.name}
-                          placeholder="Source name"
-                          onChange={(e) =>
-                            setSourceEdits((prev) => ({
-                              ...prev,
-                              [source.id]: { ...edits, name: e.target.value },
-                            }))
-                          }
-                        />
+                        <div className="space-y-1">
+                          <label className="text-xs text-zinc-500">
+                            Source Name
+                          </label>
+                          <Input
+                            value={edits.name}
+                            placeholder="Source name"
+                            onChange={(e) =>
+                              setSourceEdits((prev) => ({
+                                ...prev,
+                                [source.id]: { ...edits, name: e.target.value },
+                              }))
+                            }
+                          />
+                        </div>
                         {catalog.inputs
                           .find((c) => c.id === source.pluginId)
                           ?.configFields.map((field) => (
@@ -465,32 +470,42 @@ export default function SourcesPage() {
                               />
                             </div>
                           ))}
-                        <Input
-                          value={edits.includeKeywords}
-                          placeholder="Include keywords (comma-separated)"
-                          onChange={(e) =>
-                            setSourceEdits((prev) => ({
-                              ...prev,
-                              [source.id]: {
-                                ...edits,
-                                includeKeywords: e.target.value,
-                              },
-                            }))
-                          }
-                        />
-                        <Input
-                          value={edits.excludeKeywords}
-                          placeholder="Exclude keywords (comma-separated)"
-                          onChange={(e) =>
-                            setSourceEdits((prev) => ({
-                              ...prev,
-                              [source.id]: {
-                                ...edits,
-                                excludeKeywords: e.target.value,
-                              },
-                            }))
-                          }
-                        />
+                        <div className="space-y-1">
+                          <label className="text-xs text-zinc-500">
+                            Include Keywords (comma-separated)
+                          </label>
+                          <Input
+                            value={edits.includeKeywords}
+                            placeholder="vlog, travel"
+                            onChange={(e) =>
+                              setSourceEdits((prev) => ({
+                                ...prev,
+                                [source.id]: {
+                                  ...edits,
+                                  includeKeywords: e.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-zinc-500">
+                            Exclude Keywords (comma-separated)
+                          </label>
+                          <Input
+                            value={edits.excludeKeywords}
+                            placeholder="shorts, live"
+                            onChange={(e) =>
+                              setSourceEdits((prev) => ({
+                                ...prev,
+                                [source.id]: {
+                                  ...edits,
+                                  excludeKeywords: e.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
                         <div className="space-y-1">
                           <label className="text-xs text-zinc-500">
                             Poll Interval (seconds)

@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import type { NormalizedEvent } from "@/src/core/events/types";
 import type { Rule } from "@/src/core/rules/types";
@@ -18,6 +18,7 @@ export interface SourceRecord {
   };
   pollIntervalSec: number;
   lastCursor?: string;
+  lastPolledAt?: string;
   enabled: boolean;
 }
 
@@ -46,6 +47,7 @@ export interface Repository {
   listSources(workspaceId: string): Promise<SourceRecord[]>;
   upsertSource(source: SourceRecord): Promise<void>;
   deleteSource(workspaceId: string, sourceId: string): Promise<void>;
+  updateSourceLastPolledAt(sourceId: string, iso: string): Promise<void>;
   listOutputs(workspaceId: string): Promise<OutputRecord[]>;
   upsertOutput(output: OutputRecord): Promise<void>;
   deleteOutput(workspaceId: string, outputId: string): Promise<void>;
@@ -55,6 +57,8 @@ export interface Repository {
   listEvents(workspaceId: string): Promise<NormalizedEvent[]>;
   upsertDelivery(delivery: DeliveryRecord): Promise<void>;
   listDeliveries(workspaceId: string): Promise<DeliveryRecord[]>;
+  getSetting(workspaceId: string, key: string): Promise<string | null>;
+  setSetting(workspaceId: string, key: string, value: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,9 +94,17 @@ class D1Repository implements Repository {
           filterJson: values.filterJson,
           pollIntervalSec: values.pollIntervalSec,
           lastCursor: values.lastCursor,
+          lastPolledAt: values.lastPolledAt,
           enabled: values.enabled,
         },
       });
+  }
+
+  async updateSourceLastPolledAt(sourceId: string, iso: string): Promise<void> {
+    await this.db
+      .update(schema.sources)
+      .set({ lastPolledAt: iso })
+      .where(eq(schema.sources.id, sourceId));
   }
 
   async deleteSource(workspaceId: string, sourceId: string): Promise<void> {
@@ -216,6 +228,37 @@ class D1Repository implements Repository {
       .where(eq(schema.deliveries.workspaceId, workspaceId));
     return rows.map(rowToDelivery);
   }
+
+  async getSetting(workspaceId: string, key: string): Promise<string | null> {
+    const rows = await this.db
+      .select()
+      .from(schema.workspaceSettings)
+      .where(
+        and(
+          eq(schema.workspaceSettings.workspaceId, workspaceId),
+          eq(schema.workspaceSettings.key, key),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.value ?? null;
+  }
+
+  async setSetting(
+    workspaceId: string,
+    key: string,
+    value: string,
+  ): Promise<void> {
+    await this.db
+      .insert(schema.workspaceSettings)
+      .values({ workspaceId, key, value })
+      .onConflictDoUpdate({
+        target: [
+          schema.workspaceSettings.workspaceId,
+          schema.workspaceSettings.key,
+        ],
+        set: { value },
+      });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +278,7 @@ function rowToSource(row: typeof schema.sources.$inferSelect): SourceRecord {
       : undefined,
     pollIntervalSec: row.pollIntervalSec,
     lastCursor: row.lastCursor ?? undefined,
+    lastPolledAt: row.lastPolledAt ?? undefined,
     enabled: row.enabled,
   };
 }
@@ -250,6 +294,7 @@ function sourceToRow(source: SourceRecord) {
     filterJson: source.filter ? JSON.stringify(source.filter) : null,
     pollIntervalSec: source.pollIntervalSec,
     lastCursor: source.lastCursor ?? null,
+    lastPolledAt: source.lastPolledAt ?? null,
     enabled: source.enabled,
   };
 }

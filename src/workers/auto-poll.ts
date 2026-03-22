@@ -5,10 +5,10 @@ import { DEFAULT_WORKSPACE_ID } from "@/src/core/constants";
 import { logger } from "@/src/core/observability/logger";
 
 const TICK_INTERVAL_MS = 30_000;
+const SETTING_KEY = "auto_poll_enabled";
 
 class AutoPollManager {
   private timer: ReturnType<typeof setInterval> | null = null;
-  private lastPolledAt = new Map<string, number>();
   private ticking = false;
 
   start(): void {
@@ -18,6 +18,7 @@ class AutoPollManager {
       workspaceId: DEFAULT_WORKSPACE_ID,
       tickIntervalMs: TICK_INTERVAL_MS,
     });
+    void this.persistEnabled(true);
     void this.tick();
   }
 
@@ -26,10 +27,34 @@ class AutoPollManager {
     clearInterval(this.timer);
     this.timer = null;
     logger.info("auto-poll stopped", { workspaceId: DEFAULT_WORKSPACE_ID });
+    void this.persistEnabled(false);
   }
 
   isRunning(): boolean {
     return this.timer !== null;
+  }
+
+  /**
+   * If the DB says auto-poll should be running but the in-memory timer is gone
+   * (e.g. after a redeploy), restart it automatically.
+   */
+  async restoreIfNeeded(): Promise<void> {
+    if (this.timer) return;
+    try {
+      const repo = getRepository();
+      const val = await repo.getSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY);
+      if (val === "true") {
+        logger.info("auto-poll: restoring after process restart", {
+          workspaceId: DEFAULT_WORKSPACE_ID,
+        });
+        this.start();
+      }
+    } catch (error) {
+      logger.error("auto-poll: failed to restore state", {
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async getStatusAsync(): Promise<{
@@ -44,12 +69,22 @@ class AutoPollManager {
       tickIntervalSec: TICK_INTERVAL_MS / 1000,
       sources: sources.map((s) => ({
         id: s.id,
-        lastPolledAt: this.lastPolledAt.has(s.id)
-          ? new Date(this.lastPolledAt.get(s.id)!).toISOString()
-          : null,
+        lastPolledAt: s.lastPolledAt ?? null,
         pollIntervalSec: s.pollIntervalSec,
       })),
     };
+  }
+
+  private async persistEnabled(enabled: boolean): Promise<void> {
+    try {
+      const repo = getRepository();
+      await repo.setSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY, String(enabled));
+    } catch (error) {
+      logger.error("auto-poll: failed to persist enabled state", {
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async tick(): Promise<void> {
@@ -62,7 +97,7 @@ class AutoPollManager {
       let polledAny = false;
 
       for (const source of sources.filter((s) => s.enabled)) {
-        const last = this.lastPolledAt.get(source.id) ?? 0;
+        const last = source.lastPolledAt ? new Date(source.lastPolledAt).getTime() : 0;
         const intervalMs = source.pollIntervalSec * 1000;
         if (now - last < intervalMs) continue;
 
@@ -72,7 +107,8 @@ class AutoPollManager {
           source.pluginId,
           connectorRegistry,
         );
-        this.lastPolledAt.set(source.id, Date.now());
+        const polledAt = new Date().toISOString();
+        await repo.updateSourceLastPolledAt(source.id, polledAt);
         polledAny = true;
       }
 
