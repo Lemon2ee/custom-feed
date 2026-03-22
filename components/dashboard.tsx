@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BellRing, Cable, Filter, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +40,29 @@ interface PluginRecord {
   enabled: boolean;
 }
 
+type FieldType = "text" | "url" | "number" | "password";
+
+interface ConnectorConfigField {
+  key: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  placeholder?: string;
+}
+
+interface ConnectorCatalogItem {
+  id: string;
+  kind: "input" | "output";
+  name: string;
+  description: string;
+  configFields: ConnectorConfigField[];
+}
+
+interface ConnectorCatalog {
+  inputs: ConnectorCatalogItem[];
+  outputs: ConnectorCatalogItem[];
+}
+
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -60,61 +83,141 @@ export function Dashboard() {
   const [rules, setRules] = useState<RuleRecord[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [plugins, setPlugins] = useState<PluginRecord[]>([]);
-  const [newFeedUrl, setNewFeedUrl] = useState("");
-  const [newTopic, setNewTopic] = useState("");
+  const [catalog, setCatalog] = useState<ConnectorCatalog>({
+    inputs: [],
+    outputs: [],
+  });
+  const [sourceConnectorId, setSourceConnectorId] = useState("");
+  const [outputConnectorId, setOutputConnectorId] = useState("");
+  const [sourceConfig, setSourceConfig] = useState<Record<string, string>>({});
+  const [outputConfig, setOutputConfig] = useState<Record<string, string>>({});
   const [newRule, setNewRule] = useState("vlog");
+  const [selectedRuleOutputIds, setSelectedRuleOutputIds] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState("Ready");
 
-  async function refresh() {
-    const [sourcesRes, outputsRes, rulesRes, eventsRes, pluginsRes] = await Promise.all([
+  function parseConfigValue(type: FieldType, value: string): string | number {
+    if (type === "number") {
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    return value;
+  }
+
+  function toPayloadConfig(
+    fields: ConnectorConfigField[],
+    values: Record<string, string>,
+  ): Record<string, string | number> {
+    const payload: Record<string, string | number> = {};
+    for (const field of fields) {
+      const raw = values[field.key] ?? "";
+      if (!raw && !field.required) continue;
+      payload[field.key] = parseConfigValue(field.type, raw);
+    }
+    return payload;
+  }
+
+  function getInitialValues(fields: ConnectorConfigField[]): Record<string, string> {
+    const values: Record<string, string> = {};
+    for (const field of fields) {
+      if (field.key === "limit") {
+        values[field.key] = "20";
+        continue;
+      }
+      if (field.key === "baseUrl") {
+        values[field.key] = "https://ntfy.sh";
+        continue;
+      }
+      if (field.key === "serverUrl") {
+        values[field.key] = "https://api.day.app";
+        continue;
+      }
+      values[field.key] = "";
+    }
+    return values;
+  }
+
+  const refresh = useCallback(async () => {
+    const [sourcesRes, outputsRes, rulesRes, eventsRes, pluginsRes, catalogRes] = await Promise.all([
       jsonFetch<{ data: SourceRecord[] }>("/api/sources"),
       jsonFetch<{ data: OutputRecord[] }>("/api/outputs"),
       jsonFetch<{ data: RuleRecord[] }>("/api/rules"),
       jsonFetch<{ data: EventRecord[] }>("/api/events"),
       jsonFetch<{ data: PluginRecord[] }>("/api/plugins"),
+      jsonFetch<{ data: ConnectorCatalog }>("/api/catalog"),
     ]);
+    const safeCatalog: ConnectorCatalog = {
+      inputs: catalogRes.data?.inputs ?? [],
+      outputs: catalogRes.data?.outputs ?? [],
+    };
     setSources(sourcesRes.data);
     setOutputs(outputsRes.data);
     setRules(rulesRes.data);
     setEvents(eventsRes.data);
     setPlugins(pluginsRes.data);
-  }
+    setCatalog(safeCatalog);
+    if (safeCatalog.inputs.length > 0) {
+      const firstInput = safeCatalog.inputs[0];
+      setSourceConnectorId((prev) => prev || firstInput.id);
+      setSourceConfig((prev) =>
+        Object.keys(prev).length > 0 ? prev : getInitialValues(firstInput.configFields),
+      );
+    }
+    if (safeCatalog.outputs.length > 0) {
+      const firstOutput = safeCatalog.outputs[0];
+      setOutputConnectorId((prev) => prev || firstOutput.id);
+      setOutputConfig((prev) =>
+        Object.keys(prev).length > 0
+          ? prev
+          : getInitialValues(firstOutput.configFields),
+      );
+    }
+    if (outputsRes.data.length > 0) {
+      setSelectedRuleOutputIds((prev) =>
+        prev.length > 0 ? prev : [outputsRes.data[0].id],
+      );
+    }
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       void refresh();
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [refresh]);
 
-  async function createRssSource() {
+  const selectedInput = catalog.inputs.find((item) => item.id === sourceConnectorId);
+  const selectedOutput = catalog.outputs.find((item) => item.id === outputConnectorId);
+
+  async function createSource() {
+    if (!selectedInput) return;
     await jsonFetch("/api/sources", {
       method: "POST",
       body: JSON.stringify({
-        pluginId: "rss",
-        config: { feedUrl: newFeedUrl },
+        pluginId: selectedInput.id,
+        config: toPayloadConfig(selectedInput.configFields, sourceConfig),
       }),
     });
-    setStatusMessage("RSS source saved.");
-    setNewFeedUrl("");
+    setStatusMessage(`${selectedInput.name} source saved.`);
+    setSourceConfig(getInitialValues(selectedInput.configFields));
     await refresh();
   }
 
-  async function createNtfyOutput() {
+  async function createOutput() {
+    if (!selectedOutput) return;
     await jsonFetch("/api/outputs", {
       method: "POST",
       body: JSON.stringify({
-        pluginId: "ntfy",
-        config: { topic: newTopic, baseUrl: "https://ntfy.sh" },
+        pluginId: selectedOutput.id,
+        config: toPayloadConfig(selectedOutput.configFields, outputConfig),
       }),
     });
-    setStatusMessage("ntfy output saved.");
-    setNewTopic("");
+    setStatusMessage(`${selectedOutput.name} output saved.`);
+    setOutputConfig(getInitialValues(selectedOutput.configFields));
     await refresh();
   }
 
-  async function createVlogRule() {
-    if (!outputs.length) {
+  async function createRule() {
+    if (!selectedRuleOutputIds.length) {
       setStatusMessage("Create an output first so the rule has a target.");
       return;
     }
@@ -125,7 +228,7 @@ export function Dashboard() {
         priority: 10,
         enabled: true,
         condition: { includeKeywords: [newRule] },
-        action: { outputIds: [outputs[0].id] },
+        action: { outputIds: selectedRuleOutputIds },
       }),
     });
     setStatusMessage("Rule saved.");
@@ -156,17 +259,35 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Input
-              placeholder="https://example.com/feed.xml"
-              value={newFeedUrl}
-              onChange={(event) => setNewFeedUrl(event.target.value)}
-            />
-            <Button
-              className="w-full"
-              onClick={createRssSource}
-              disabled={!newFeedUrl}
+            <select
+              className="w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm dark:border-zinc-700"
+              value={sourceConnectorId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                setSourceConnectorId(nextId);
+                const next = catalog.inputs.find((item) => item.id === nextId);
+                setSourceConfig(next ? getInitialValues(next.configFields) : {});
+              }}
             >
-              Add RSS Source
+              {catalog.inputs.map((connector) => (
+                <option key={connector.id} value={connector.id}>
+                  {connector.name}
+                </option>
+              ))}
+            </select>
+            {selectedInput?.configFields.map((field) => (
+              <Input
+                key={field.key}
+                type={field.type}
+                placeholder={field.placeholder}
+                value={sourceConfig[field.key] ?? ""}
+                onChange={(event) =>
+                  setSourceConfig((prev) => ({ ...prev, [field.key]: event.target.value }))
+                }
+              />
+            ))}
+            <Button className="w-full" onClick={createSource} disabled={!selectedInput}>
+              Add Source
             </Button>
           </CardContent>
         </Card>
@@ -178,18 +299,40 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Input
-              placeholder="ntfy topic"
-              value={newTopic}
-              onChange={(event) => setNewTopic(event.target.value)}
-            />
+            <select
+              className="w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm dark:border-zinc-700"
+              value={outputConnectorId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                setOutputConnectorId(nextId);
+                const next = catalog.outputs.find((item) => item.id === nextId);
+                setOutputConfig(next ? getInitialValues(next.configFields) : {});
+              }}
+            >
+              {catalog.outputs.map((connector) => (
+                <option key={connector.id} value={connector.id}>
+                  {connector.name}
+                </option>
+              ))}
+            </select>
+            {selectedOutput?.configFields.map((field) => (
+              <Input
+                key={field.key}
+                type={field.type}
+                placeholder={field.placeholder}
+                value={outputConfig[field.key] ?? ""}
+                onChange={(event) =>
+                  setOutputConfig((prev) => ({ ...prev, [field.key]: event.target.value }))
+                }
+              />
+            ))}
             <Button
               className="w-full"
               variant="secondary"
-              onClick={createNtfyOutput}
-              disabled={!newTopic}
+              onClick={createOutput}
+              disabled={!selectedOutput}
             >
-              Add ntfy Output
+              Add Output
             </Button>
           </CardContent>
         </Card>
@@ -205,7 +348,31 @@ export function Dashboard() {
               value={newRule}
               onChange={(event) => setNewRule(event.target.value)}
             />
-            <Button className="w-full" variant="outline" onClick={createVlogRule}>
+            <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
+              <p className="text-xs text-zinc-500">Route to outputs</p>
+              {outputs.length === 0 ? (
+                <p className="text-xs text-zinc-500">No outputs available yet.</p>
+              ) : (
+                outputs.map((output) => (
+                  <label key={output.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedRuleOutputIds.includes(output.id)}
+                      onChange={(event) => {
+                        setSelectedRuleOutputIds((prev) => {
+                          if (event.target.checked) return [...prev, output.id];
+                          return prev.filter((id) => id !== output.id);
+                        });
+                      }}
+                    />
+                    <span>
+                      {output.pluginId} ({output.id.slice(0, 6)})
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+            <Button className="w-full" variant="outline" onClick={createRule}>
               Save Keyword Rule
             </Button>
           </CardContent>

@@ -4,6 +4,24 @@ import { youtubeInputConnector } from "./input/youtube";
 import { ntfyOutputConnector } from "./output/ntfy";
 import { barkOutputConnector } from "./output/bark";
 
+type FieldType = "text" | "url" | "number" | "password";
+
+interface ConnectorConfigField {
+  key: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  placeholder?: string;
+}
+
+interface ConnectorCatalogItem {
+  id: string;
+  kind: "input" | "output";
+  name: string;
+  description: string;
+  configFields: ConnectorConfigField[];
+}
+
 export const connectorRegistry: ConnectorRegistry = {
   inputs: {
     [rssInputConnector.id]: rssInputConnector,
@@ -13,4 +31,116 @@ export const connectorRegistry: ConnectorRegistry = {
     [ntfyOutputConnector.id]: ntfyOutputConnector,
     [barkOutputConnector.id]: barkOutputConnector,
   },
+};
+
+export const connectorCatalog: {
+  inputs: ConnectorCatalogItem[];
+  outputs: ConnectorCatalogItem[];
+} = {
+  inputs: [
+    {
+      id: "rss",
+      kind: "input",
+      name: "RSS Feed",
+      description: "Polls RSS/Atom feed URLs.",
+      configFields: [
+        {
+          key: "feedUrl",
+          label: "Feed URL",
+          type: "url",
+          required: true,
+          placeholder: "https://example.com/feed.xml",
+        },
+        {
+          key: "limit",
+          label: "Max Items",
+          type: "number",
+          required: true,
+          placeholder: "20",
+        },
+      ],
+    },
+    {
+      id: "youtube",
+      kind: "input",
+      name: "YouTube Channel",
+      description: "Polls channel feed for new videos.",
+      configFields: [
+        {
+          key: "channelId",
+          label: "Channel ID",
+          type: "text",
+          required: true,
+          placeholder: "UC...",
+        },
+        {
+          key: "limit",
+          label: "Max Items",
+          type: "number",
+          required: true,
+          placeholder: "20",
+        },
+      ],
+    },
+  ],
+  outputs: [
+    {
+      id: "ntfy",
+      kind: "output",
+      name: "ntfy",
+      description: "Send push notifications via ntfy topic.",
+      configFields: [
+        {
+          key: "baseUrl",
+          label: "Base URL",
+          type: "url",
+          required: true,
+          placeholder: "https://ntfy.sh",
+        },
+        {
+          key: "topic",
+          label: "Topic",
+          type: "text",
+          required: true,
+          placeholder: "my-topic",
+        },
+        {
+          key: "token",
+          label: "Bearer Token (optional)",
+          type: "password",
+          required: false,
+          placeholder: "",
+        },
+      ],
+    },
+    {
+      id: "bark",
+      kind: "output",
+      name: "Bark",
+      description: "Send iOS push notifications via Bark.",
+      configFields: [
+        {
+          key: "serverUrl",
+          label: "Server URL",
+          type: "url",
+          required: true,
+          placeholder: "https://api.day.app",
+        },
+        {
+          key: "deviceKey",
+          label: "Device Key",
+          type: "password",
+          required: true,
+          placeholder: "",
+        },
+        {
+          key: "group",
+          label: "Group (optional)",
+          type: "text",
+          required: false,
+          placeholder: "feeds",
+        },
+      ],
+    },
+  ],
 };
