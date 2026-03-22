@@ -23,7 +23,7 @@ MVP includes a repository abstraction plus D1-ready schema:
 - `sources`, `outputs`, `events`, `rules`, `deliveries`,
 - `plugin_installs`, `plugin_secrets`.
 
-The code currently ships with an in-memory repository for fast local iteration and tests, while keeping D1 migration targets explicit in `src/db/schema.ts`.
+Persistence is backed by Cloudflare D1 (SQLite). The schema is defined in `src/db/schema.ts` and accessed via Drizzle ORM.
 
 ## Security
 

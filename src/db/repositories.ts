@@ -311,6 +311,7 @@ function rowToEvent(row: typeof schema.events.$inferSelect): NormalizedEvent {
     author: row.author ?? undefined,
     publishedAt: row.publishedAt ?? undefined,
     imageUrl: row.imageUrl ?? undefined,
+    authorImageUrl: row.authorImageUrl ?? undefined,
     tags: JSON.parse(row.tagsJson) as string[],
     rawPayload: JSON.parse(row.rawJson) as unknown,
     createdAt: row.createdAt,
@@ -331,6 +332,7 @@ function eventToRow(event: NormalizedEvent) {
     author: event.author ?? null,
     publishedAt: event.publishedAt ?? null,
     imageUrl: event.imageUrl ?? null,
+    authorImageUrl: event.authorImageUrl ?? null,
     tagsJson: JSON.stringify(event.tags),
     rawJson: JSON.stringify(event.rawPayload),
     createdAt: event.createdAt,
@@ -372,111 +374,7 @@ function deliveryToRow(delivery: DeliveryRecord) {
 }
 
 // ---------------------------------------------------------------------------
-// In-memory implementation (kept for tests)
-// ---------------------------------------------------------------------------
-
-export class MemoryRepository implements Repository {
-  private sources = new Map<string, SourceRecord>();
-  private outputs = new Map<string, OutputRecord>();
-  private rules = new Map<string, Rule>();
-  private events = new Map<string, NormalizedEvent>();
-  private deliveries = new Map<string, DeliveryRecord>();
-  private dedupe = new Set<string>();
-
-  async listSources(workspaceId: string): Promise<SourceRecord[]> {
-    return [...this.sources.values()].filter(
-      (item) => item.workspaceId === workspaceId,
-    );
-  }
-
-  async upsertSource(source: SourceRecord): Promise<void> {
-    this.sources.set(source.id, source);
-  }
-
-  async deleteSource(workspaceId: string, sourceId: string): Promise<void> {
-    const source = this.sources.get(sourceId);
-    if (!source || source.workspaceId !== workspaceId) return;
-    this.sources.delete(sourceId);
-
-    const removedEventIds = [...this.events.values()]
-      .filter(
-        (event) =>
-          event.workspaceId === workspaceId && event.sourceId === sourceId,
-      )
-      .map((event) => event.id);
-
-    for (const eventId of removedEventIds) {
-      this.events.delete(eventId);
-      for (const [deliveryId, delivery] of this.deliveries.entries()) {
-        if (
-          delivery.workspaceId === workspaceId &&
-          delivery.eventId === eventId
-        ) {
-          this.deliveries.delete(deliveryId);
-        }
-      }
-    }
-  }
-
-  async listOutputs(workspaceId: string): Promise<OutputRecord[]> {
-    return [...this.outputs.values()].filter(
-      (item) => item.workspaceId === workspaceId,
-    );
-  }
-
-  async upsertOutput(output: OutputRecord): Promise<void> {
-    this.outputs.set(output.id, output);
-  }
-
-  async deleteOutput(workspaceId: string, outputId: string): Promise<void> {
-    const output = this.outputs.get(outputId);
-    if (!output || output.workspaceId !== workspaceId) return;
-    this.outputs.delete(outputId);
-  }
-
-  async listRules(workspaceId: string): Promise<Rule[]> {
-    return [...this.rules.values()].filter(
-      (item) => item.workspaceId === workspaceId,
-    );
-  }
-
-  async upsertRule(rule: Rule): Promise<void> {
-    this.rules.set(rule.id, rule);
-  }
-
-  async upsertEvent(event: NormalizedEvent): Promise<{ inserted: boolean }> {
-    const dedupeKey = createDedupeHash(event);
-    if (this.dedupe.has(`${event.workspaceId}:${dedupeKey}`)) {
-      return { inserted: false };
-    }
-    this.events.set(event.id, event);
-    this.dedupe.add(`${event.workspaceId}:${dedupeKey}`);
-    return { inserted: true };
-  }
-
-  async listEvents(workspaceId: string): Promise<NormalizedEvent[]> {
-    return [...this.events.values()]
-      .filter((item) => item.workspaceId === workspaceId)
-      .sort((a, b) =>
-        (b.publishedAt ?? b.createdAt).localeCompare(
-          a.publishedAt ?? a.createdAt,
-        ),
-      );
-  }
-
-  async upsertDelivery(delivery: DeliveryRecord): Promise<void> {
-    this.deliveries.set(delivery.id, delivery);
-  }
-
-  async listDeliveries(workspaceId: string): Promise<DeliveryRecord[]> {
-    return [...this.deliveries.values()].filter(
-      (item) => item.workspaceId === workspaceId,
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Factory -- resolves D1 from Cloudflare Workers env, falls back to in-memory
+// Factory -- resolves D1 from Cloudflare Workers env
 // ---------------------------------------------------------------------------
 
 let _d1: D1Database | undefined;
@@ -484,7 +382,7 @@ try {
   const mod = await import("cloudflare:workers");
   _d1 = (mod.env as { DB?: D1Database }).DB;
 } catch {
-  // cloudflare:workers unavailable (tests, non-CF runtimes)
+  // cloudflare:workers unavailable — use wrangler dev locally
 }
 
 let cachedRepo: Repository | undefined;
@@ -495,10 +393,11 @@ export function createD1Repository(d1: D1Database): Repository {
 
 export function getRepository(): Repository {
   if (cachedRepo) return cachedRepo;
-  if (_d1) {
-    cachedRepo = createD1Repository(_d1);
-  } else {
-    cachedRepo = new MemoryRepository();
+  if (!_d1) {
+    throw new Error(
+      "D1 database binding not found. Run the app with `wrangler dev` or deploy to Cloudflare Workers.",
+    );
   }
+  cachedRepo = createD1Repository(_d1);
   return cachedRepo;
 }

@@ -57,6 +57,7 @@ export const events = sqliteTable(
     author: text("author"),
     publishedAt: text("published_at"),
     imageUrl: text("image_url"),
+    authorImageUrl: text("author_image_url"),
     tagsJson: text("tags_json").notNull(),
     rawJson: text("raw_json").notNull(),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

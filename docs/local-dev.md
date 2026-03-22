@@ -21,5 +21,5 @@ npm run dev
 
 ## Notes
 
-- The current default repository implementation is in-memory for fast prototyping.
-- D1 schema and Cloudflare-oriented runtime settings are in place for migration to hosted environments.
+- Local development uses a D1 database via `wrangler dev`. To reset, delete `.wrangler/state/`.
+- The D1 schema is defined in `src/db/schema.ts`; run `npm run db:generate` after schema changes.
