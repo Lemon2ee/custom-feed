@@ -1,0 +1,8 @@
+{
+  "guid": "item-123",
+  "title": "Weekly vlog highlights",
+  "link": "https://example.com/video/123",
+  "contentSnippet": "This week vlog edition...",
+  "pubDate": "2026-03-22T00:00:00.000Z",
+  "categories": ["vlog", "travel"]
+}

@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Custom Feed Middleware
 
-## Getting Started
+Plugin-first feed middleware for:
+- multi-source ingest (RSS, YouTube, more via plugins),
+- deterministic filtering/rule matching,
+- multi-channel delivery (ntfy, Bark, and additional output connectors).
 
-First, run the development server:
+The system is designed to start self-hosted and evolve to multi-tenant without major domain rewrites.
+
+## Core Architecture
+
+Pipeline:
+1. Source connector polls or receives feed data.
+2. Data is normalized into a shared event schema.
+3. Events are deduplicated and stored.
+4. Rules are evaluated in deterministic priority order.
+5. Deliveries are queued and dispatched by output connectors.
+
+Key modules:
+- `src/core/connectors`: input/output connector contracts
+- `src/core/rules`: rule evaluator + simulation support
+- `src/core/plugins`: manifest validation, installer, runtime boundaries
+- `src/core/pipeline`: ingest + delivery orchestration
+- `src/db`: schema and repository layer
+- `src/workers`: ingest scheduler + delivery worker
+
+## Quick Start
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Testing
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run test` - full unit suite
+- `npm run test:contracts` - connector conformance tests
+- `npm run test:integration` - pipeline integration tests
+- `npm run test:ui` - component tests
+- `npm run test:e2e:smoke` - smoke E2E flow
+- `npm run test:e2e` - full Playwright suite
 
-## Learn More
+## API Overview (MVP)
 
-To learn more about Next.js, take a look at the following resources:
+- `POST/GET/PATCH /api/sources`
+- `POST/GET/PATCH /api/outputs`
+- `POST/GET/PATCH /api/rules`
+- `POST /api/rules/simulate`
+- `GET /api/events`
+- `GET /api/deliveries`
+- `POST /api/plugins/install`
+- `POST /api/plugins/update`
+- `POST /api/plugins/disable`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Plugin Model
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Third-party plugins are treated as untrusted:
+- declarative manifest with capabilities,
+- integrity/signature checks before activation,
+- deny-by-default runtime permissions,
+- auditable install/update/disable actions.
 
-## Deploy on Vercel
+See:
+- `docs/plugin-sdk.md`
+- `docs/architecture.md`
+- `docs/testing-playbook.md`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Cloudflare Notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Target runtime is Cloudflare-compatible (`wrangler.toml` included). D1/KV/Queues wiring is represented in module boundaries so production adapters can be plugged in without changing connector/rule contracts.

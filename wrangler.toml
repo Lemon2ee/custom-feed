@@ -1,0 +1,6 @@
+name = "custom-feed"
+main = "dist/server/index.js"
+compatibility_date = "2026-03-22"
+
+[observability.logs]
+enabled = true
