@@ -38,6 +38,12 @@ import {
   type SourceItem,
 } from "@/hooks/use-feed-api";
 
+function connectorHue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
+  return Math.abs(h) % 360;
+}
+
 export default function SourcesPage() {
   const {
     loading,
@@ -429,8 +435,16 @@ export default function SourcesPage() {
                       <span className="truncate text-sm font-medium">
                         {source.name || source.pluginId}
                       </span>
-                      <span className="ml-auto shrink-0 text-xs text-zinc-500">
-                        {source.pluginId} · {source.id.slice(0, 6)}
+                      <span className="ml-auto flex shrink-0 items-center gap-2">
+                        <span
+                          className="connector-tag inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                          style={{ "--hue": connectorHue(source.pluginId) } as React.CSSProperties}
+                        >
+                          {source.pluginId}
+                        </span>
+                        <span className="text-xs text-zinc-500">
+                          {source.id.slice(0, 6)}
+                        </span>
                       </span>
                     </button>
 
