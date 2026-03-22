@@ -133,6 +133,48 @@ function backfillAuthorImage(
   }
 }
 
+// ── Video description backfill ──────────────────────────────────
+// Space Arc Search and App Archive often return empty descriptions.
+// Fetch the full description from the video view API for items that
+// are missing one.
+
+async function fetchVideoDesc(bvid: string): Promise<string | undefined> {
+  try {
+    const cookie = await getOrCreateCookie();
+    const res = await fetch(
+      `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`,
+      {
+        headers: {
+          "User-Agent": UA,
+          Referer: "https://www.bilibili.com/",
+          Cookie: cookie,
+        },
+      },
+    );
+    if (!res.ok) return undefined;
+    const json = (await res.json()) as {
+      code?: number;
+      data?: { desc?: string };
+    };
+    if (json.code === 0 && json.data?.desc) {
+      return json.data.desc;
+    }
+  } catch {
+    // non-critical
+  }
+  return undefined;
+}
+
+async function backfillDescriptions(items: ExternalItem[]): Promise<void> {
+  for (const item of items) {
+    if (item.contentText?.trim()) continue;
+    const bvid = item.externalItemId;
+    if (!bvid.startsWith("BV")) continue;
+    const desc = await fetchVideoDesc(bvid);
+    if (desc) item.contentText = desc;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Strategy 1 — Space Arc Search (lightest, single request)
 // Uses order_avoided=true to bypass WBI requirement.
@@ -509,6 +551,8 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
           const face = await fetchUserFace(mid);
           backfillAuthorImage(result.items, face);
         }
+
+        await backfillDescriptions(result.items);
 
         return result;
       } catch (err) {

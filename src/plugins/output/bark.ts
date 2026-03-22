@@ -152,7 +152,10 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
     const parsed = configSchema.parse(config);
     const baseUrl = parsed.serverUrl.replace(/\/$/, "");
     const messageTitle = event.title || "New feed item";
-    const messageBody = createMessageBody(messageTitle, event.contentText ?? event.url);
+    const bodyText = event.contentText?.trim()
+      || (event.author ? `by ${event.author}` : undefined)
+      || event.url;
+    const messageBody = createMessageBody(messageTitle, bodyText);
     const group = context.sourceName;
 
     let res: Response;
