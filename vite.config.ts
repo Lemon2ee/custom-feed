@@ -19,6 +19,7 @@ export default defineConfig({
   ],
   build: {
     rollupOptions: {
+      external: [/^cloudflare:/],
       onwarn(warning, defaultHandler) {
         if (warning.message?.includes("Error when using sourcemap")) return;
         if (

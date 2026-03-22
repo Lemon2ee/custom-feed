@@ -4,17 +4,23 @@ import { cn } from "@/lib/utils";
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "default" | "secondary" | "outline" | "destructive" | "ghost";
+  size?: "default" | "sm" | "lg" | "icon";
 }
 
 export function Button({
   className,
   variant = "default",
+  size = "default",
   ...props
 }: ButtonProps) {
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center rounded-md font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+        size === "default" && "px-4 py-2 text-sm",
+        size === "sm" && "px-3 py-1.5 text-xs",
+        size === "lg" && "px-6 py-3 text-base",
+        size === "icon" && "h-9 w-9 p-0",
         variant === "default" &&
           "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200",
         variant === "secondary" &&
