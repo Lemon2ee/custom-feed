@@ -286,6 +286,34 @@ export function useFeedApi() {
     await refresh();
   }
 
+  async function testOutput(
+    outputId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(`/api/outputs/${outputId}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        result?: { error?: string };
+      };
+      if (res.ok) {
+        setStatusMessage("Test notification sent!");
+        return { ok: true };
+      }
+      const msg =
+        body.error ?? body.result?.error ?? `Test failed (${res.status})`;
+      setStatusMessage(`Test failed: ${msg}`);
+      return { ok: false, error: msg };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setStatusMessage(`Test failed: ${msg}`);
+      return { ok: false, error: msg };
+    }
+  }
+
   async function runWorkers() {
     await jsonFetch("/api/workers/run", { method: "POST" });
     setStatusMessage("Ingest + delivery workers executed.");
@@ -320,6 +348,7 @@ export function useFeedApi() {
     createOutput,
     updateOutput,
     deleteOutput,
+    testOutput,
     runWorkers,
     toggleAutoPoll,
   };

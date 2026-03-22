@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Plus, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ export default function OutputsPage() {
     createOutput,
     updateOutput,
     deleteOutput,
+    testOutput,
   } = useFeedApi();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -46,6 +47,7 @@ export default function OutputsPage() {
   const [editConfigs, setEditConfigs] = useState<
     Record<string, Record<string, string>>
   >({});
+  const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
 
   const selectedOutput = catalog.outputs.find(
     (item) => item.id === outputConnectorId,
@@ -108,6 +110,19 @@ export default function OutputsPage() {
       else next.add(id);
       return next;
     });
+  }
+
+  async function handleTestOutput(outputId: string) {
+    setTestingIds((prev) => new Set(prev).add(outputId));
+    try {
+      await testOutput(outputId);
+    } finally {
+      setTestingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(outputId);
+        return next;
+      });
+    }
   }
 
   async function handleSaveOutput(
@@ -298,6 +313,20 @@ export default function OutputsPage() {
                               Save
                             </Button>
                           )}
+                          <Button
+                            variant="outline"
+                            disabled={testingIds.has(output.id)}
+                            onClick={() =>
+                              void handleTestOutput(output.id)
+                            }
+                          >
+                            {testingIds.has(output.id) ? (
+                              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Zap className="mr-1.5 h-4 w-4" />
+                            )}
+                            Test
+                          </Button>
                           <Button
                             variant="destructive"
                             onClick={() => void deleteOutput(output.id)}
