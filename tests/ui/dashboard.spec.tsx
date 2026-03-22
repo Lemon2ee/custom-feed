@@ -17,7 +17,7 @@ describe("Dashboard", () => {
       expect(screen.getByText("Custom Feed Middleware")).toBeInTheDocument();
       expect(screen.getByText("Source Setup")).toBeInTheDocument();
       expect(screen.getByText("Output Setup")).toBeInTheDocument();
-      expect(screen.getByText("Rule Builder")).toBeInTheDocument();
+      expect(screen.getByText("Source Manager")).toBeInTheDocument();
     });
   });
 });

@@ -5,8 +5,14 @@ import { createDedupeHash } from "@/src/core/events/dedupe";
 export interface SourceRecord {
   id: string;
   workspaceId: string;
+  name: string;
   pluginId: string;
   config: Record<string, unknown>;
+  outputIds: string[];
+  filter?: {
+    includeKeywords?: string[];
+    excludeKeywords?: string[];
+  };
   pollIntervalSec: number;
   lastCursor?: string;
   enabled: boolean;
@@ -36,6 +42,7 @@ export interface DeliveryRecord {
 export interface Repository {
   listSources(workspaceId: string): Promise<SourceRecord[]>;
   upsertSource(source: SourceRecord): Promise<void>;
+  deleteSource(workspaceId: string, sourceId: string): Promise<void>;
   listOutputs(workspaceId: string): Promise<OutputRecord[]>;
   upsertOutput(output: OutputRecord): Promise<void>;
   listRules(workspaceId: string): Promise<Rule[]>;
@@ -60,6 +67,25 @@ class MemoryRepository implements Repository {
 
   async upsertSource(source: SourceRecord): Promise<void> {
     this.sources.set(source.id, source);
+  }
+
+  async deleteSource(workspaceId: string, sourceId: string): Promise<void> {
+    const source = this.sources.get(sourceId);
+    if (!source || source.workspaceId !== workspaceId) return;
+    this.sources.delete(sourceId);
+
+    const removedEventIds = [...this.events.values()]
+      .filter((event) => event.workspaceId === workspaceId && event.sourceId === sourceId)
+      .map((event) => event.id);
+
+    for (const eventId of removedEventIds) {
+      this.events.delete(eventId);
+      for (const [deliveryId, delivery] of this.deliveries.entries()) {
+        if (delivery.workspaceId === workspaceId && delivery.eventId === eventId) {
+          this.deliveries.delete(deliveryId);
+        }
+      }
+    }
   }
 
   async listOutputs(workspaceId: string): Promise<OutputRecord[]> {

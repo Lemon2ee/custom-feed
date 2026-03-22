@@ -67,11 +67,11 @@ export const connectorCatalog: {
       description: "Polls channel feed for new videos.",
       configFields: [
         {
-          key: "channelId",
-          label: "Channel ID",
+          key: "channel",
+          label: "Channel URL / Handle / ID",
           type: "text",
           required: true,
-          placeholder: "UC...",
+          placeholder: "https://www.youtube.com/@elliotpage_",
         },
         {
           key: "limit",
@@ -109,7 +109,7 @@ export const connectorCatalog: {
           label: "Bearer Token (optional)",
           type: "password",
           required: false,
-          placeholder: "",
+          placeholder: "ntfy access token",
         },
       ],
     },
@@ -131,7 +131,7 @@ export const connectorCatalog: {
           label: "Device Key",
           type: "password",
           required: true,
-          placeholder: "",
+          placeholder: "your-bark-device-key",
         },
         {
           key: "group",

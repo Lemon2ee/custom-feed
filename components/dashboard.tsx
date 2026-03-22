@@ -1,28 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, Cable, Filter, PlugZap } from "lucide-react";
+import { BellRing, Cable, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface SourceRecord {
   id: string;
+  name: string;
   pluginId: string;
+  config: Record<string, unknown>;
+  outputIds: string[];
+  filter?: {
+    includeKeywords?: string[];
+    excludeKeywords?: string[];
+  };
   enabled: boolean;
 }
 
 interface OutputRecord {
   id: string;
   pluginId: string;
-  enabled: boolean;
-}
-
-interface RuleRecord {
-  id: string;
-  name: string;
   enabled: boolean;
 }
 
@@ -63,6 +70,13 @@ interface ConnectorCatalog {
   outputs: ConnectorCatalogItem[];
 }
 
+interface SourceEditState {
+  name: string;
+  includeKeywords: string;
+  excludeKeywords: string;
+  outputIds: string[];
+}
+
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -80,7 +94,6 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 export function Dashboard() {
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [outputs, setOutputs] = useState<OutputRecord[]>([]);
-  const [rules, setRules] = useState<RuleRecord[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [plugins, setPlugins] = useState<PluginRecord[]>([]);
   const [catalog, setCatalog] = useState<ConnectorCatalog>({
@@ -90,10 +103,22 @@ export function Dashboard() {
   const [sourceConnectorId, setSourceConnectorId] = useState("");
   const [outputConnectorId, setOutputConnectorId] = useState("");
   const [sourceConfig, setSourceConfig] = useState<Record<string, string>>({});
+  const [newSourceName, setNewSourceName] = useState("");
+  const [newSourceIncludeKeywords, setNewSourceIncludeKeywords] = useState("");
+  const [newSourceExcludeKeywords, setNewSourceExcludeKeywords] = useState("");
+  const [selectedSourceOutputIds, setSelectedSourceOutputIds] = useState<string[]>(
+    [],
+  );
   const [outputConfig, setOutputConfig] = useState<Record<string, string>>({});
-  const [newRule, setNewRule] = useState("vlog");
-  const [selectedRuleOutputIds, setSelectedRuleOutputIds] = useState<string[]>([]);
+  const [sourceEdits, setSourceEdits] = useState<Record<string, SourceEditState>>({});
   const [statusMessage, setStatusMessage] = useState("Ready");
+
+  function splitKeywordCsv(value: string): string[] {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
 
   function parseConfigValue(type: FieldType, value: string): string | number {
     if (type === "number") {
@@ -137,10 +162,9 @@ export function Dashboard() {
   }
 
   const refresh = useCallback(async () => {
-    const [sourcesRes, outputsRes, rulesRes, eventsRes, pluginsRes, catalogRes] = await Promise.all([
+    const [sourcesRes, outputsRes, eventsRes, pluginsRes, catalogRes] = await Promise.all([
       jsonFetch<{ data: SourceRecord[] }>("/api/sources"),
       jsonFetch<{ data: OutputRecord[] }>("/api/outputs"),
-      jsonFetch<{ data: RuleRecord[] }>("/api/rules"),
       jsonFetch<{ data: EventRecord[] }>("/api/events"),
       jsonFetch<{ data: PluginRecord[] }>("/api/plugins"),
       jsonFetch<{ data: ConnectorCatalog }>("/api/catalog"),
@@ -151,7 +175,6 @@ export function Dashboard() {
     };
     setSources(sourcesRes.data);
     setOutputs(outputsRes.data);
-    setRules(rulesRes.data);
     setEvents(eventsRes.data);
     setPlugins(pluginsRes.data);
     setCatalog(safeCatalog);
@@ -172,10 +195,22 @@ export function Dashboard() {
       );
     }
     if (outputsRes.data.length > 0) {
-      setSelectedRuleOutputIds((prev) =>
+      setSelectedSourceOutputIds((prev) =>
         prev.length > 0 ? prev : [outputsRes.data[0].id],
       );
     }
+    setSourceEdits((prev) => {
+      const next: Record<string, SourceEditState> = {};
+      for (const source of sourcesRes.data) {
+        next[source.id] = prev[source.id] ?? {
+          name: source.name,
+          includeKeywords: (source.filter?.includeKeywords ?? []).join(", "),
+          excludeKeywords: (source.filter?.excludeKeywords ?? []).join(", "),
+          outputIds: source.outputIds ?? [],
+        };
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -190,15 +225,54 @@ export function Dashboard() {
 
   async function createSource() {
     if (!selectedInput) return;
+    if (!selectedSourceOutputIds.length) {
+      setStatusMessage("Pick at least one output for this source.");
+      return;
+    }
     await jsonFetch("/api/sources", {
       method: "POST",
       body: JSON.stringify({
         pluginId: selectedInput.id,
+        name: newSourceName.trim() || undefined,
+        outputIds: selectedSourceOutputIds,
+        filter: {
+          includeKeywords: splitKeywordCsv(newSourceIncludeKeywords),
+          excludeKeywords: splitKeywordCsv(newSourceExcludeKeywords),
+        },
         config: toPayloadConfig(selectedInput.configFields, sourceConfig),
       }),
     });
     setStatusMessage(`${selectedInput.name} source saved.`);
     setSourceConfig(getInitialValues(selectedInput.configFields));
+    setNewSourceName("");
+    setNewSourceIncludeKeywords("");
+    setNewSourceExcludeKeywords("");
+    await refresh();
+  }
+
+  async function saveSourceEdits(sourceId: string) {
+    const edits = sourceEdits[sourceId];
+    if (!edits) return;
+    await jsonFetch(`/api/sources/${sourceId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: edits.name.trim() || undefined,
+        outputIds: edits.outputIds,
+        filter: {
+          includeKeywords: splitKeywordCsv(edits.includeKeywords),
+          excludeKeywords: splitKeywordCsv(edits.excludeKeywords),
+        },
+      }),
+    });
+    setStatusMessage("Source updated.");
+    await refresh();
+  }
+
+  async function deleteSource(sourceId: string) {
+    await jsonFetch(`/api/sources/${sourceId}`, {
+      method: "DELETE",
+    });
+    setStatusMessage("Source deleted.");
     await refresh();
   }
 
@@ -213,25 +287,6 @@ export function Dashboard() {
     });
     setStatusMessage(`${selectedOutput.name} output saved.`);
     setOutputConfig(getInitialValues(selectedOutput.configFields));
-    await refresh();
-  }
-
-  async function createRule() {
-    if (!selectedRuleOutputIds.length) {
-      setStatusMessage("Create an output first so the rule has a target.");
-      return;
-    }
-    await jsonFetch("/api/rules", {
-      method: "POST",
-      body: JSON.stringify({
-        name: "Vlog only filter",
-        priority: 10,
-        enabled: true,
-        condition: { includeKeywords: [newRule] },
-        action: { outputIds: selectedRuleOutputIds },
-      }),
-    });
-    setStatusMessage("Rule saved.");
     await refresh();
   }
 
@@ -251,7 +306,7 @@ export function Dashboard() {
         <Badge>{statusMessage}</Badge>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -259,33 +314,94 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <select
-              className="w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm dark:border-zinc-700"
-              value={sourceConnectorId}
-              onChange={(event) => {
-                const nextId = event.target.value;
+            <Select
+              value={sourceConnectorId || undefined}
+              onValueChange={(nextId) => {
                 setSourceConnectorId(nextId);
                 const next = catalog.inputs.find((item) => item.id === nextId);
                 setSourceConfig(next ? getInitialValues(next.configFields) : {});
               }}
+              disabled={catalog.inputs.length === 0}
             >
-              {catalog.inputs.map((connector) => (
-                <option key={connector.id} value={connector.id}>
-                  {connector.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder="Select source connector" />
+              </SelectTrigger>
+              <SelectContent>
+                {catalog.inputs.map((connector) => (
+                  <SelectItem key={connector.id} value={connector.id}>
+                    {connector.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {selectedInput?.configFields.map((field) => (
-              <Input
-                key={field.key}
-                type={field.type}
-                placeholder={field.placeholder}
-                value={sourceConfig[field.key] ?? ""}
-                onChange={(event) =>
-                  setSourceConfig((prev) => ({ ...prev, [field.key]: event.target.value }))
-                }
-              />
+              <div key={field.key} className="space-y-1">
+                <label className="text-xs text-zinc-500">
+                  {field.label}
+                  {field.required ? " *" : ""}
+                </label>
+                <Input
+                  type={field.type}
+                  placeholder={field.placeholder || field.label}
+                  value={sourceConfig[field.key] ?? ""}
+                  onChange={(event) =>
+                    setSourceConfig((prev) => ({ ...prev, [field.key]: event.target.value }))
+                  }
+                />
+              </div>
             ))}
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500">Source Name</label>
+              <Input
+                placeholder="My YouTube Source"
+                value={newSourceName}
+                onChange={(event) => setNewSourceName(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500">
+                Source Filter: Include Keywords (comma-separated)
+              </label>
+              <Input
+                placeholder="vlog, travel"
+                value={newSourceIncludeKeywords}
+                onChange={(event) => setNewSourceIncludeKeywords(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500">
+                Source Filter: Exclude Keywords (comma-separated)
+              </label>
+              <Input
+                placeholder="shorts, live"
+                value={newSourceExcludeKeywords}
+                onChange={(event) => setNewSourceExcludeKeywords(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
+              <p className="text-xs text-zinc-500">Route this source to outputs</p>
+              {outputs.length === 0 ? (
+                <p className="text-xs text-zinc-500">No outputs available yet.</p>
+              ) : (
+                outputs.map((output) => (
+                  <label key={output.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedSourceOutputIds.includes(output.id)}
+                      onChange={(event) => {
+                        setSelectedSourceOutputIds((prev) => {
+                          if (event.target.checked) return [...prev, output.id];
+                          return prev.filter((id) => id !== output.id);
+                        });
+                      }}
+                    />
+                    <span>
+                      {output.pluginId} ({output.id.slice(0, 6)})
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
             <Button className="w-full" onClick={createSource} disabled={!selectedInput}>
               Add Source
             </Button>
@@ -299,32 +415,41 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <select
-              className="w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm dark:border-zinc-700"
-              value={outputConnectorId}
-              onChange={(event) => {
-                const nextId = event.target.value;
+            <Select
+              value={outputConnectorId || undefined}
+              onValueChange={(nextId) => {
                 setOutputConnectorId(nextId);
                 const next = catalog.outputs.find((item) => item.id === nextId);
                 setOutputConfig(next ? getInitialValues(next.configFields) : {});
               }}
+              disabled={catalog.outputs.length === 0}
             >
-              {catalog.outputs.map((connector) => (
-                <option key={connector.id} value={connector.id}>
-                  {connector.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder="Select output connector" />
+              </SelectTrigger>
+              <SelectContent>
+                {catalog.outputs.map((connector) => (
+                  <SelectItem key={connector.id} value={connector.id}>
+                    {connector.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {selectedOutput?.configFields.map((field) => (
-              <Input
-                key={field.key}
-                type={field.type}
-                placeholder={field.placeholder}
-                value={outputConfig[field.key] ?? ""}
-                onChange={(event) =>
-                  setOutputConfig((prev) => ({ ...prev, [field.key]: event.target.value }))
-                }
-              />
+              <div key={field.key} className="space-y-1">
+                <label className="text-xs text-zinc-500">
+                  {field.label}
+                  {field.required ? " *" : ""}
+                </label>
+                <Input
+                  type={field.type}
+                  placeholder={field.placeholder || field.label}
+                  value={outputConfig[field.key] ?? ""}
+                  onChange={(event) =>
+                    setOutputConfig((prev) => ({ ...prev, [field.key]: event.target.value }))
+                  }
+                />
+              </div>
             ))}
             <Button
               className="w-full"
@@ -337,46 +462,6 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-4 w-4" /> Rule Builder
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={newRule}
-              onChange={(event) => setNewRule(event.target.value)}
-            />
-            <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
-              <p className="text-xs text-zinc-500">Route to outputs</p>
-              {outputs.length === 0 ? (
-                <p className="text-xs text-zinc-500">No outputs available yet.</p>
-              ) : (
-                outputs.map((output) => (
-                  <label key={output.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedRuleOutputIds.includes(output.id)}
-                      onChange={(event) => {
-                        setSelectedRuleOutputIds((prev) => {
-                          if (event.target.checked) return [...prev, output.id];
-                          return prev.filter((id) => id !== output.id);
-                        });
-                      }}
-                    />
-                    <span>
-                      {output.pluginId} ({output.id.slice(0, 6)})
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
-            <Button className="w-full" variant="outline" onClick={createRule}>
-              Save Keyword Rule
-            </Button>
-          </CardContent>
-        </Card>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
@@ -389,7 +474,6 @@ export function Dashboard() {
           <CardContent className="text-sm">
             <p>Sources: {sources.length}</p>
             <p>Outputs: {outputs.length}</p>
-            <p>Rules: {rules.length}</p>
             <Button className="mt-2" onClick={runWorkers}>
               Run Workers
             </Button>
@@ -414,6 +498,119 @@ export function Dashboard() {
                   </li>
                 ))}
               </ul>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Source Manager</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {sources.length === 0 ? (
+              <p className="text-sm text-zinc-500">No sources yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {sources.map((source) => {
+                  const edits = sourceEdits[source.id] ?? {
+                    name: source.name,
+                    includeKeywords: "",
+                    excludeKeywords: "",
+                    outputIds: source.outputIds ?? [],
+                  };
+                  return (
+                    <div
+                      key={source.id}
+                      className="space-y-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+                    >
+                      <p className="text-xs text-zinc-500">
+                        {source.pluginId} ({source.id.slice(0, 6)})
+                      </p>
+                      <Input
+                        value={edits.name}
+                        placeholder="Source name"
+                        onChange={(event) =>
+                          setSourceEdits((prev) => ({
+                            ...prev,
+                            [source.id]: { ...edits, name: event.target.value },
+                          }))
+                        }
+                      />
+                      <Input
+                        value={edits.includeKeywords}
+                        placeholder="Include keywords (comma-separated)"
+                        onChange={(event) =>
+                          setSourceEdits((prev) => ({
+                            ...prev,
+                            [source.id]: {
+                              ...edits,
+                              includeKeywords: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                      <Input
+                        value={edits.excludeKeywords}
+                        placeholder="Exclude keywords (comma-separated)"
+                        onChange={(event) =>
+                          setSourceEdits((prev) => ({
+                            ...prev,
+                            [source.id]: {
+                              ...edits,
+                              excludeKeywords: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                      <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
+                        <p className="text-xs text-zinc-500">Route this source to outputs</p>
+                        {outputs.length === 0 ? (
+                          <p className="text-xs text-zinc-500">No outputs available yet.</p>
+                        ) : (
+                          outputs.map((output) => (
+                            <label key={output.id} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={edits.outputIds.includes(output.id)}
+                                onChange={(event) =>
+                                  setSourceEdits((prev) => ({
+                                    ...prev,
+                                    [source.id]: {
+                                      ...edits,
+                                      outputIds: event.target.checked
+                                        ? [...edits.outputIds, output.id]
+                                        : edits.outputIds.filter((id) => id !== output.id),
+                                    },
+                                  }))
+                                }
+                              />
+                              <span>
+                                {output.pluginId} ({output.id.slice(0, 6)})
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => void saveSourceEdits(source.id)}
+                        >
+                          Save Source
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => void deleteSource(source.id)}
+                        >
+                          Delete Source
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>

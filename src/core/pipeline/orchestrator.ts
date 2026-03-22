@@ -1,9 +1,44 @@
 import { randomUUID } from "node:crypto";
 import type { InputConnector, OutputConnector } from "../connectors/types";
 import { normalizeEvent } from "../events/normalize";
-import { defaultRuleEngine } from "../rules/engine";
 import { logger } from "../observability/logger";
 import { getRepository } from "@/src/db/repositories";
+
+function matchesSourceFilter(
+  item: {
+    title: string;
+    contentText?: string;
+    tags?: string[];
+  },
+  filter?: {
+    includeKeywords?: string[];
+    excludeKeywords?: string[];
+  },
+): boolean {
+  if (!filter) return true;
+  const haystack = [item.title, item.contentText, ...(item.tags ?? [])]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+
+  const include = filter.includeKeywords?.filter(Boolean) ?? [];
+  if (include.length > 0) {
+    const matched = include.some((keyword) =>
+      haystack.includes(keyword.toLowerCase()),
+    );
+    if (!matched) return false;
+  }
+
+  const exclude = filter.excludeKeywords?.filter(Boolean) ?? [];
+  if (exclude.length > 0) {
+    const blocked = exclude.some((keyword) =>
+      haystack.includes(keyword.toLowerCase()),
+    );
+    if (blocked) return false;
+  }
+
+  return true;
+}
 
 export interface ConnectorRegistry {
   inputs: Record<string, InputConnector<unknown>>;
@@ -23,13 +58,25 @@ export async function runSourcePoll(
   const input = registry.inputs[connectorId];
   if (!input) throw new Error(`input connector not found: ${connectorId}`);
 
-  const polled = await input.poll(
-    { workspaceId, sourceId, cursor: source.lastCursor },
-    source.config,
-  );
-  const rules = await repo.listRules(workspaceId);
-
+  let polled;
+  try {
+    polled = await input.poll(
+      { workspaceId, sourceId, cursor: source.lastCursor },
+      source.config,
+    );
+  } catch (error) {
+    logger.error("source poll failed", {
+      workspaceId,
+      sourceId,
+      connectorId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
   for (const item of polled.items) {
+    if (!matchesSourceFilter(item, source.filter)) {
+      continue;
+    }
     const sourceType = (["rss", "youtube", "stock", "webhook", "custom"].includes(
       connectorId,
     )
@@ -51,19 +98,16 @@ export async function runSourcePoll(
     const inserted = await repo.upsertEvent(event);
     if (!inserted.inserted) continue;
 
-    const actions = defaultRuleEngine.evaluate(event, rules);
-    for (const action of actions) {
-      for (const outputId of action.outputIds) {
-        const deliveryId = randomUUID();
-        await repo.upsertDelivery({
-          id: deliveryId,
-          workspaceId,
-          eventId: event.id,
-          outputId,
-          status: "pending",
-          attemptCount: 0,
-        });
-      }
+    for (const outputId of source.outputIds) {
+      const deliveryId = randomUUID();
+      await repo.upsertDelivery({
+        id: deliveryId,
+        workspaceId,
+        eventId: event.id,
+        outputId,
+        status: "pending",
+        attemptCount: 0,
+      });
     }
   }
 
@@ -110,6 +154,11 @@ export async function runPendingDeliveries(
         sentAt: new Date().toISOString(),
         receipt: result.receipt,
       });
+      logger.info("delivery sent", {
+        workspaceId,
+        outputId: output.id,
+        eventId: event.id,
+      });
       continue;
     }
 
@@ -123,6 +172,13 @@ export async function runPendingDeliveries(
       attemptCount: delivery.attemptCount + 1,
       nextRetryAt,
       lastError: result.error ?? "unknown error",
+    });
+    logger.warn("delivery failed", {
+      workspaceId,
+      outputId: output.id,
+      eventId: event.id,
+      retryable: isRetryable,
+      error: result.error ?? "unknown error",
     });
   }
 }

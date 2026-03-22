@@ -21,13 +21,17 @@ describe("input connector contract", () => {
   it("youtube connector validates config shape", () => {
     expect(
       youtubeInputConnector.validateConfig({
-        channelId: "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+        channel: "UC_x5XG1OV2P6uZZ5FSM9Ttw",
         limit: 20,
       }).valid,
     ).toBe(true);
-    expect(youtubeInputConnector.validateConfig({ channelId: "", limit: 20 }).valid).toBe(
-      false,
-    );
+    expect(
+      youtubeInputConnector.validateConfig({
+        channel: "https://www.youtube.com/@elliotpage_",
+        limit: 20,
+      }).valid,
+    ).toBe(true);
+    expect(youtubeInputConnector.validateConfig({ channel: "", limit: 20 }).valid).toBe(false);
   });
 });
 
@@ -69,5 +73,21 @@ describe("output connector contract", () => {
       { serverUrl: "https://api.day.app", deviceKey: "abc" },
     );
     expect(result.status).toBe("retryable_error");
+  });
+
+  it("bark treats API-level rejection as permanent error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 400, message: "invalid device key" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await barkOutputConnector.send(
+      event,
+      { workspaceId: "w1", outputId: "o1" },
+      { serverUrl: "https://api.day.app", deviceKey: "abc" },
+    );
+    expect(result.status).toBe("permanent_error");
   });
 });
