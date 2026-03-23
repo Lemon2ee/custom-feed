@@ -4,125 +4,94 @@ import { connectorRegistry } from "@/src/plugins/registry";
 import { DEFAULT_WORKSPACE_ID } from "@/src/core/constants";
 import { logger } from "@/src/core/observability/logger";
 
-const TICK_INTERVAL_MS = 30_000;
 const SETTING_KEY = "auto_poll_enabled";
 
-class AutoPollManager {
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private ticking = false;
+/**
+ * Called by the Cloudflare cron trigger (every minute).
+ * Checks if auto-poll is enabled, then polls sources whose interval has elapsed.
+ */
+export async function cronPollTick(): Promise<void> {
+  const repo = getRepository();
+  const enabled = await repo.getSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY);
+  if (enabled !== "true") return;
 
-  start(): void {
-    if (this.timer) return;
-    this.timer = setInterval(() => void this.tick(), TICK_INTERVAL_MS);
-    logger.info("auto-poll started", {
-      workspaceId: DEFAULT_WORKSPACE_ID,
-      tickIntervalMs: TICK_INTERVAL_MS,
-    });
-    void this.persistEnabled(true);
-    void this.tick();
-  }
+  const sources = await repo.listSources(DEFAULT_WORKSPACE_ID);
+  const now = Date.now();
+  let polledAny = false;
 
-  stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = null;
-    logger.info("auto-poll stopped", { workspaceId: DEFAULT_WORKSPACE_ID });
-    void this.persistEnabled(false);
-  }
+  for (const source of sources.filter((s) => s.enabled)) {
+    const last = source.lastPolledAt
+      ? new Date(source.lastPolledAt).getTime()
+      : 0;
+    const intervalMs = source.pollIntervalSec * 1000;
+    if (now - last < intervalMs) continue;
 
-  isRunning(): boolean {
-    return this.timer !== null;
-  }
-
-  /**
-   * If the DB says auto-poll should be running but the in-memory timer is gone
-   * (e.g. after a redeploy), restart it automatically.
-   */
-  async restoreIfNeeded(): Promise<void> {
-    if (this.timer) return;
     try {
-      const repo = getRepository();
-      const val = await repo.getSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY);
-      if (val === "true") {
-        logger.info("auto-poll: restoring after process restart", {
-          workspaceId: DEFAULT_WORKSPACE_ID,
-        });
-        this.start();
-      }
+      await runSourcePoll(
+        DEFAULT_WORKSPACE_ID,
+        source.id,
+        source.pluginId,
+        connectorRegistry,
+      );
+      polledAny = true;
     } catch (error) {
-      logger.error("auto-poll: failed to restore state", {
+      logger.error("auto-poll source failed", {
         workspaceId: DEFAULT_WORKSPACE_ID,
+        sourceId: source.id,
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
+  if (polledAny) {
+    await runPendingDeliveries(DEFAULT_WORKSPACE_ID, connectorRegistry);
+  }
+}
+
+class AutoPollManager {
+  async start(): Promise<void> {
+    const repo = getRepository();
+    await repo.setSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY, "true");
+    logger.info("auto-poll enabled (cron-driven)", {
+      workspaceId: DEFAULT_WORKSPACE_ID,
+    });
+  }
+
+  async stop(): Promise<void> {
+    const repo = getRepository();
+    await repo.setSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY, "false");
+    logger.info("auto-poll disabled", {
+      workspaceId: DEFAULT_WORKSPACE_ID,
+    });
+  }
+
+  async isRunning(): Promise<boolean> {
+    const repo = getRepository();
+    const val = await repo.getSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY);
+    return val === "true";
+  }
+
   async getStatusAsync(): Promise<{
     running: boolean;
     tickIntervalSec: number;
-    sources: Array<{ id: string; lastPolledAt: string | null; pollIntervalSec: number }>;
+    sources: Array<{
+      id: string;
+      lastPolledAt: string | null;
+      pollIntervalSec: number;
+    }>;
   }> {
     const repo = getRepository();
+    const running = await this.isRunning();
     const sources = await repo.listSources(DEFAULT_WORKSPACE_ID);
     return {
-      running: this.isRunning(),
-      tickIntervalSec: TICK_INTERVAL_MS / 1000,
+      running,
+      tickIntervalSec: 60,
       sources: sources.map((s) => ({
         id: s.id,
         lastPolledAt: s.lastPolledAt ?? null,
         pollIntervalSec: s.pollIntervalSec,
       })),
     };
-  }
-
-  private async persistEnabled(enabled: boolean): Promise<void> {
-    try {
-      const repo = getRepository();
-      await repo.setSetting(DEFAULT_WORKSPACE_ID, SETTING_KEY, String(enabled));
-    } catch (error) {
-      logger.error("auto-poll: failed to persist enabled state", {
-        workspaceId: DEFAULT_WORKSPACE_ID,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  private async tick(): Promise<void> {
-    if (this.ticking) return;
-    this.ticking = true;
-    try {
-      const repo = getRepository();
-      const sources = await repo.listSources(DEFAULT_WORKSPACE_ID);
-      const now = Date.now();
-      let polledAny = false;
-
-      for (const source of sources.filter((s) => s.enabled)) {
-        const last = source.lastPolledAt ? new Date(source.lastPolledAt).getTime() : 0;
-        const intervalMs = source.pollIntervalSec * 1000;
-        if (now - last < intervalMs) continue;
-
-        await runSourcePoll(
-          DEFAULT_WORKSPACE_ID,
-          source.id,
-          source.pluginId,
-          connectorRegistry,
-        );
-        const polledAt = new Date().toISOString();
-        await repo.updateSourceLastPolledAt(source.id, polledAt);
-        polledAny = true;
-      }
-
-      if (polledAny) {
-        await runPendingDeliveries(DEFAULT_WORKSPACE_ID, connectorRegistry);
-      }
-    } catch (error) {
-      logger.error("auto-poll tick failed", {
-        workspaceId: DEFAULT_WORKSPACE_ID,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      this.ticking = false;
-    }
   }
 }
 

@@ -73,7 +73,7 @@ export async function runSourcePoll(
     });
     return;
   }
-  const isInitialSync = !source.lastCursor;
+  const isInitialSync = !source.lastCursor && !source.lastPolledAt;
 
   for (const item of polled.items) {
     if (!matchesSourceFilter(item, source.filter)) {
@@ -116,7 +116,12 @@ export async function runSourcePoll(
     }
   }
 
-  await repo.upsertSource({ ...source, lastCursor: polled.nextCursor });
+  const polledAt = new Date().toISOString();
+  await repo.upsertSource({
+    ...source,
+    lastCursor: polled.nextCursor ?? source.lastCursor,
+    lastPolledAt: polledAt,
+  });
   logger.info("source poll completed", {
     workspaceId,
     sourceId,

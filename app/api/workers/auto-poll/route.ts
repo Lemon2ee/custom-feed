@@ -7,7 +7,6 @@ const postSchema = z.object({
 });
 
 export async function GET() {
-  await autoPollManager.restoreIfNeeded();
   const status = await autoPollManager.getStatusAsync();
   return NextResponse.json({ data: status });
 }
@@ -17,9 +16,9 @@ export async function POST(request: Request) {
   const { action } = postSchema.parse(body);
 
   if (action === "start") {
-    autoPollManager.start();
+    await autoPollManager.start();
   } else {
-    autoPollManager.stop();
+    await autoPollManager.stop();
   }
 
   const status = await autoPollManager.getStatusAsync();
