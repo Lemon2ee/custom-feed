@@ -168,29 +168,34 @@ export function useFeedApi() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [
-      sourcesRes,
-      outputsRes,
-      eventsRes,
-      catalogRes,
-      autoPollRes,
-    ] = await Promise.all([
-      jsonFetch<{ data: SourceRecord[] }>("/api/sources"),
-      jsonFetch<{ data: OutputRecord[] }>("/api/outputs"),
-      jsonFetch<{ data: EventRecord[] }>("/api/events"),
-      jsonFetch<{ data: ConnectorCatalog }>("/api/catalog"),
-      jsonFetch<{ data: AutoPollStatus }>("/api/workers/auto-poll"),
-    ]);
-    setAutoPoll(autoPollRes.data);
-    const safeCatalog: ConnectorCatalog = {
-      inputs: catalogRes.data?.inputs ?? [],
-      outputs: catalogRes.data?.outputs ?? [],
-    };
-    setSources(sourcesRes.data);
-    setOutputs(outputsRes.data);
-    setEvents(eventsRes.data);
-    setCatalog(safeCatalog);
-    setLoading(false);
+    try {
+      const [
+        sourcesRes,
+        outputsRes,
+        eventsRes,
+        catalogRes,
+        autoPollRes,
+      ] = await Promise.all([
+        jsonFetch<{ data: SourceRecord[] }>("/api/sources"),
+        jsonFetch<{ data: OutputRecord[] }>("/api/outputs"),
+        jsonFetch<{ data: EventRecord[] }>("/api/events"),
+        jsonFetch<{ data: ConnectorCatalog }>("/api/catalog"),
+        jsonFetch<{ data: AutoPollStatus }>("/api/workers/auto-poll"),
+      ]);
+      setAutoPoll(autoPollRes.data);
+      const safeCatalog: ConnectorCatalog = {
+        inputs: catalogRes.data?.inputs ?? [],
+        outputs: catalogRes.data?.outputs ?? [],
+      };
+      setSources(sourcesRes.data);
+      setOutputs(outputsRes.data);
+      setEvents(eventsRes.data);
+      setCatalog(safeCatalog);
+    } catch {
+      toast.error("Failed to load data. Try refreshing the page.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -211,12 +216,17 @@ export function useFeedApi() {
     config: Record<string, string | number>;
     pollIntervalSec: number;
   }) {
-    await jsonFetch("/api/sources", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    toast.success("Source saved.");
-    await refresh();
+    try {
+      await jsonFetch("/api/sources", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      toast.success("Source saved.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create source");
+      throw err;
+    }
   }
 
   async function saveSourceEdits(
@@ -232,52 +242,77 @@ export function useFeedApi() {
       config?: Record<string, string | number>;
     },
   ) {
-    await jsonFetch(`/api/sources/${sourceId}`, {
-      method: "PATCH",
-      body: JSON.stringify(edits),
-    });
-    toast.success("Source updated.");
-    await refresh();
+    try {
+      await jsonFetch(`/api/sources/${sourceId}`, {
+        method: "PATCH",
+        body: JSON.stringify(edits),
+      });
+      toast.success("Source updated.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update source");
+      throw err;
+    }
   }
 
   async function deleteSource(sourceId: string) {
-    await jsonFetch(`/api/sources/${sourceId}`, {
-      method: "DELETE",
-    });
-    toast.success("Source deleted.");
-    await refresh();
+    try {
+      await jsonFetch(`/api/sources/${sourceId}`, {
+        method: "DELETE",
+      });
+      toast.success("Source deleted.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete source");
+      throw err;
+    }
   }
 
   async function createOutput(payload: {
     pluginId: string;
     config: Record<string, string | number>;
   }) {
-    await jsonFetch("/api/outputs", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    toast.success("Output saved.");
-    await refresh();
+    try {
+      await jsonFetch("/api/outputs", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      toast.success("Output saved.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create output");
+      throw err;
+    }
   }
 
   async function updateOutput(
     outputId: string,
     edits: { config?: Record<string, unknown>; enabled?: boolean },
   ) {
-    await jsonFetch(`/api/outputs/${outputId}`, {
-      method: "PATCH",
-      body: JSON.stringify(edits),
-    });
-    toast.success("Output updated.");
-    await refresh();
+    try {
+      await jsonFetch(`/api/outputs/${outputId}`, {
+        method: "PATCH",
+        body: JSON.stringify(edits),
+      });
+      toast.success("Output updated.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update output");
+      throw err;
+    }
   }
 
   async function deleteOutput(outputId: string) {
-    await jsonFetch(`/api/outputs/${outputId}`, {
-      method: "DELETE",
-    });
-    toast.success("Output deleted.");
-    await refresh();
+    try {
+      await jsonFetch(`/api/outputs/${outputId}`, {
+        method: "DELETE",
+      });
+      toast.success("Output deleted.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete output");
+      throw err;
+    }
   }
 
   async function testOutput(
@@ -359,21 +394,31 @@ export function useFeedApi() {
   }
 
   async function runWorkers() {
-    await jsonFetch("/api/workers/run", { method: "POST" });
-    toast.success("Ingest + delivery workers executed.");
-    await refresh();
+    try {
+      await jsonFetch("/api/workers/run", { method: "POST" });
+      toast.success("Ingest + delivery workers executed.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to run workers");
+      throw err;
+    }
   }
 
   async function toggleAutoPoll() {
     const action = autoPoll.running ? "stop" : "start";
-    await jsonFetch("/api/workers/auto-poll", {
-      method: "POST",
-      body: JSON.stringify({ action }),
-    });
-    toast.success(
-      action === "start" ? "Auto-poll started." : "Auto-poll stopped.",
-    );
-    await refresh();
+    try {
+      await jsonFetch("/api/workers/auto-poll", {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      toast.success(
+        action === "start" ? "Auto-poll started." : "Auto-poll stopped.",
+      );
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to toggle auto-poll");
+      throw err;
+    }
   }
 
   return {

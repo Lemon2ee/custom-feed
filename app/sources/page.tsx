@@ -78,6 +78,9 @@ export default function SourcesPage() {
   const [sourceItems, setSourceItems] = useState<Record<string, SourceItem[]>>({});
   const [loadingItemsIds, setLoadingItemsIds] = useState<Set<string>>(new Set());
   const [sendingItemKeys, setSendingItemKeys] = useState<Set<string>>(new Set());
+  const [creatingSource, setCreatingSource] = useState(false);
+  const [savingSourceIds, setSavingSourceIds] = useState<Set<string>>(new Set());
+  const [deletingSourceIds, setDeletingSourceIds] = useState<Set<string>>(new Set());
 
   const selectedInput = catalog.inputs.find(
     (item) => item.id === sourceConnectorId,
@@ -126,26 +129,31 @@ export default function SourcesPage() {
   async function handleCreateSource() {
     if (!selectedInput) return;
     if (!selectedSourceOutputIds.length) return;
-    const pollSec = Number(newSourcePollInterval);
-    await createSource({
-      pluginId: selectedInput.id,
-      name: newSourceName.trim() || undefined,
-      outputIds: selectedSourceOutputIds,
-      filter: {
-        includeKeywords: splitKeywordCsv(newSourceIncludeKeywords),
-        excludeKeywords: splitKeywordCsv(newSourceExcludeKeywords),
-      },
-      config: toPayloadConfig(selectedInput.configFields, sourceConfig),
-      pollIntervalSec: Number.isFinite(pollSec) && pollSec > 0 ? pollSec : 300,
-    });
-    setDialogOpen(false);
-    setSourceConfig(
-      selectedInput ? getInitialValues(selectedInput.configFields) : {},
-    );
-    setNewSourceName("");
-    setNewSourceIncludeKeywords("");
-    setNewSourceExcludeKeywords("");
-    setNewSourcePollInterval("300");
+    setCreatingSource(true);
+    try {
+      const pollSec = Number(newSourcePollInterval);
+      await createSource({
+        pluginId: selectedInput.id,
+        name: newSourceName.trim() || undefined,
+        outputIds: selectedSourceOutputIds,
+        filter: {
+          includeKeywords: splitKeywordCsv(newSourceIncludeKeywords),
+          excludeKeywords: splitKeywordCsv(newSourceExcludeKeywords),
+        },
+        config: toPayloadConfig(selectedInput.configFields, sourceConfig),
+        pollIntervalSec: Number.isFinite(pollSec) && pollSec > 0 ? pollSec : 300,
+      });
+      setDialogOpen(false);
+      setSourceConfig(
+        selectedInput ? getInitialValues(selectedInput.configFields) : {},
+      );
+      setNewSourceName("");
+      setNewSourceIncludeKeywords("");
+      setNewSourceExcludeKeywords("");
+      setNewSourcePollInterval("300");
+    } finally {
+      setCreatingSource(false);
+    }
   }
 
   async function handleFetchItems(sourceId: string) {
@@ -191,24 +199,47 @@ export default function SourcesPage() {
   async function handleSaveEdits(sourceId: string) {
     const edits = sourceEdits[sourceId];
     if (!edits) return;
-    const source = sources.find((s) => s.id === sourceId);
-    const inputCatalog = source
-      ? catalog.inputs.find((c) => c.id === source.pluginId)
-      : undefined;
-    const pollSec = Number(edits.pollIntervalSec);
-    await saveSourceEdits(sourceId, {
-      name: edits.name.trim() || undefined,
-      outputIds: edits.outputIds,
-      filter: {
-        includeKeywords: splitKeywordCsv(edits.includeKeywords),
-        excludeKeywords: splitKeywordCsv(edits.excludeKeywords),
-      },
-      pollIntervalSec:
-        Number.isFinite(pollSec) && pollSec > 0 ? pollSec : undefined,
-      config: inputCatalog
-        ? toPayloadConfig(inputCatalog.configFields, edits.config)
-        : undefined,
-    });
+    setSavingSourceIds((prev) => new Set(prev).add(sourceId));
+    try {
+      const source = sources.find((s) => s.id === sourceId);
+      const inputCatalog = source
+        ? catalog.inputs.find((c) => c.id === source.pluginId)
+        : undefined;
+      const pollSec = Number(edits.pollIntervalSec);
+      await saveSourceEdits(sourceId, {
+        name: edits.name.trim() || undefined,
+        outputIds: edits.outputIds,
+        filter: {
+          includeKeywords: splitKeywordCsv(edits.includeKeywords),
+          excludeKeywords: splitKeywordCsv(edits.excludeKeywords),
+        },
+        pollIntervalSec:
+          Number.isFinite(pollSec) && pollSec > 0 ? pollSec : undefined,
+        config: inputCatalog
+          ? toPayloadConfig(inputCatalog.configFields, edits.config)
+          : undefined,
+      });
+    } finally {
+      setSavingSourceIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sourceId);
+        return next;
+      });
+    }
+  }
+
+  async function handleDeleteSource(sourceId: string) {
+    if (!window.confirm("Delete this source? This also removes all its events and deliveries.")) return;
+    setDeletingSourceIds((prev) => new Set(prev).add(sourceId));
+    try {
+      await deleteSource(sourceId);
+    } finally {
+      setDeletingSourceIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sourceId);
+        return next;
+      });
+    }
   }
 
   return (
@@ -359,9 +390,10 @@ export default function SourcesPage() {
               <Button
                 className="w-full"
                 onClick={handleCreateSource}
-                disabled={!selectedInput}
+                disabled={creatingSource || !selectedInput}
               >
-                Add Source
+                {creatingSource && <Loader2 className="h-4 w-4 animate-spin" />}
+                {creatingSource ? "Adding..." : "Add Source"}
               </Button>
             </div>
           </DialogContent>
@@ -684,15 +716,19 @@ export default function SourcesPage() {
                         <div className="flex gap-2">
                           <Button
                             variant="secondary"
+                            disabled={savingSourceIds.has(source.id)}
                             onClick={() => void handleSaveEdits(source.id)}
                           >
-                            Save
+                            {savingSourceIds.has(source.id) && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {savingSourceIds.has(source.id) ? "Saving..." : "Save"}
                           </Button>
                           <Button
                             variant="destructive"
-                            onClick={() => void deleteSource(source.id)}
+                            disabled={deletingSourceIds.has(source.id)}
+                            onClick={() => void handleDeleteSource(source.id)}
                           >
-                            Delete
+                            {deletingSourceIds.has(source.id) && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {deletingSourceIds.has(source.id) ? "Deleting..." : "Delete"}
                           </Button>
                         </div>
                       </div>

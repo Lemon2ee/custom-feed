@@ -2,7 +2,7 @@ import handler from "vinext/server/app-router-entry";
 import { cronPollTick } from "./workers/auto-poll";
 import { logger } from "./core/observability/logger";
 
-export default {
+const workerEntry = {
   async fetch(request: Request) {
     return handler.fetch(request);
   },
@@ -17,3 +17,5 @@ export default {
     }
   },
 };
+
+export default workerEntry;

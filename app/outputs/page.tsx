@@ -48,6 +48,9 @@ export default function OutputsPage() {
     Record<string, Record<string, string>>
   >({});
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
+  const [creatingOutput, setCreatingOutput] = useState(false);
+  const [savingOutputIds, setSavingOutputIds] = useState<Set<string>>(new Set());
+  const [deletingOutputIds, setDeletingOutputIds] = useState<Set<string>>(new Set());
 
   const selectedOutput = catalog.outputs.find(
     (item) => item.id === outputConnectorId,
@@ -66,14 +69,19 @@ export default function OutputsPage() {
 
   async function handleCreateOutput() {
     if (!selectedOutput) return;
-    await createOutput({
-      pluginId: selectedOutput.id,
-      config: toPayloadConfig(selectedOutput.configFields, outputConfig),
-    });
-    setDialogOpen(false);
-    setOutputConfig(
-      selectedOutput ? getInitialValues(selectedOutput.configFields) : {},
-    );
+    setCreatingOutput(true);
+    try {
+      await createOutput({
+        pluginId: selectedOutput.id,
+        config: toPayloadConfig(selectedOutput.configFields, outputConfig),
+      });
+      setDialogOpen(false);
+      setOutputConfig(
+        selectedOutput ? getInitialValues(selectedOutput.configFields) : {},
+      );
+    } finally {
+      setCreatingOutput(false);
+    }
   }
 
   function getOutputPluginName(pluginId: string): string {
@@ -132,9 +140,32 @@ export default function OutputsPage() {
     const fields = getFieldsForPlugin(pluginId);
     const values = editConfigs[outputId];
     if (!values) return;
-    await updateOutput(outputId, {
-      config: toPayloadConfig(fields, values),
-    });
+    setSavingOutputIds((prev) => new Set(prev).add(outputId));
+    try {
+      await updateOutput(outputId, {
+        config: toPayloadConfig(fields, values),
+      });
+    } finally {
+      setSavingOutputIds((prev) => {
+        const next = new Set(prev);
+        next.delete(outputId);
+        return next;
+      });
+    }
+  }
+
+  async function handleDeleteOutput(outputId: string) {
+    if (!window.confirm("Delete this output?")) return;
+    setDeletingOutputIds((prev) => new Set(prev).add(outputId));
+    try {
+      await deleteOutput(outputId);
+    } finally {
+      setDeletingOutputIds((prev) => {
+        const next = new Set(prev);
+        next.delete(outputId);
+        return next;
+      });
+    }
   }
 
   return (
@@ -209,9 +240,10 @@ export default function OutputsPage() {
               <Button
                 className="w-full"
                 onClick={handleCreateOutput}
-                disabled={!selectedOutput}
+                disabled={creatingOutput || !selectedOutput}
               >
-                Add Output
+                {creatingOutput && <Loader2 className="h-4 w-4 animate-spin" />}
+                {creatingOutput ? "Adding..." : "Add Output"}
               </Button>
             </div>
           </DialogContent>
@@ -311,6 +343,7 @@ export default function OutputsPage() {
                           {fields.length > 0 && (
                             <Button
                               variant="secondary"
+                              disabled={savingOutputIds.has(output.id)}
                               onClick={() =>
                                 void handleSaveOutput(
                                   output.id,
@@ -318,7 +351,8 @@ export default function OutputsPage() {
                                 )
                               }
                             >
-                              Save
+                              {savingOutputIds.has(output.id) && <Loader2 className="h-4 w-4 animate-spin" />}
+                              {savingOutputIds.has(output.id) ? "Saving..." : "Save"}
                             </Button>
                           )}
                           <Button
@@ -337,9 +371,11 @@ export default function OutputsPage() {
                           </Button>
                           <Button
                             variant="destructive"
-                            onClick={() => void deleteOutput(output.id)}
+                            disabled={deletingOutputIds.has(output.id)}
+                            onClick={() => void handleDeleteOutput(output.id)}
                           >
-                            Delete
+                            {deletingOutputIds.has(output.id) && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {deletingOutputIds.has(output.id) ? "Deleting..." : "Delete"}
                           </Button>
                         </div>
                       </div>
