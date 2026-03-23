@@ -9,6 +9,7 @@ export interface SourceRecord {
   pluginId: string;
   config: Record<string, unknown>;
   outputIds: string[];
+  outputOverrides?: Record<string, Record<string, unknown>>;
   filter?: {
     includeKeywords?: string[];
     excludeKeywords?: string[];
@@ -52,6 +53,7 @@ export interface ConnectorConfigField {
   required?: boolean;
   placeholder?: string;
   options?: Array<{ value: string; label: string }>;
+  overridable?: boolean;
 }
 
 export interface ConnectorCatalogItem {
@@ -72,6 +74,7 @@ export interface SourceEditState {
   includeKeywords: string;
   excludeKeywords: string;
   outputIds: string[];
+  outputOverrides: Record<string, Record<string, string>>;
   pollIntervalSec: string;
   config: Record<string, string>;
 }
@@ -228,6 +231,7 @@ export function useFeedApi() {
     pluginId: string;
     name?: string;
     outputIds: string[];
+    outputOverrides?: Record<string, Record<string, string | number>>;
     filter: {
       includeKeywords: string[];
       excludeKeywords: string[];
@@ -253,6 +257,7 @@ export function useFeedApi() {
     edits: {
       name?: string;
       outputIds: string[];
+      outputOverrides?: Record<string, Record<string, string | number>>;
       filter: {
         includeKeywords: string[];
         excludeKeywords: string[];

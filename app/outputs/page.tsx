@@ -161,7 +161,7 @@ export default function OutputsPage() {
 
   function formatMuteRemaining(mutedUntil: string): string | null {
     const diff = new Date(mutedUntil).getTime() - Date.now();
-    if (diff <= 0) return null;
+    if (!Number.isFinite(diff) || diff <= 0) return null;
     const hours = Math.floor(diff / (60 * 60 * 1000));
     const days = Math.floor(hours / 24);
     if (days > 0) return `${days}d ${hours % 24}h`;

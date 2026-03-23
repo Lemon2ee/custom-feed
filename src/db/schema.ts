@@ -10,6 +10,7 @@ export const sources = sqliteTable(
     pluginId: text("plugin_id").notNull(),
     configJson: text("config_json").notNull(),
     outputIdsJson: text("output_ids_json").notNull().default("[]"),
+    outputOverridesJson: text("output_overrides_json"),
     filterJson: text("filter_json"),
     pollIntervalSec: integer("poll_interval_sec").notNull().default(300),
     lastCursor: text("last_cursor"),

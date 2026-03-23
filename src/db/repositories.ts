@@ -12,6 +12,7 @@ export interface SourceRecord {
   pluginId: string;
   config: Record<string, unknown>;
   outputIds: string[];
+  outputOverrides?: Record<string, Record<string, unknown>>;
   filter?: {
     includeKeywords?: string[];
     excludeKeywords?: string[];
@@ -109,6 +110,7 @@ class D1Repository implements Repository {
           pluginId: values.pluginId,
           configJson: values.configJson,
           outputIdsJson: values.outputIdsJson,
+          outputOverridesJson: values.outputOverridesJson,
           filterJson: values.filterJson,
           pollIntervalSec: values.pollIntervalSec,
           lastCursor: values.lastCursor,
@@ -325,6 +327,9 @@ function rowToSource(row: typeof schema.sources.$inferSelect): SourceRecord {
     pluginId: row.pluginId,
     config: JSON.parse(row.configJson) as Record<string, unknown>,
     outputIds: JSON.parse(row.outputIdsJson) as string[],
+    outputOverrides: row.outputOverridesJson
+      ? (JSON.parse(row.outputOverridesJson) as Record<string, Record<string, unknown>>)
+      : undefined,
     filter: row.filterJson
       ? (JSON.parse(row.filterJson) as SourceRecord["filter"])
       : undefined,
@@ -343,6 +348,9 @@ function sourceToRow(source: SourceRecord) {
     pluginId: source.pluginId,
     configJson: JSON.stringify(source.config),
     outputIdsJson: JSON.stringify(source.outputIds),
+    outputOverridesJson: source.outputOverrides
+      ? JSON.stringify(source.outputOverrides)
+      : null,
     filterJson: source.filter ? JSON.stringify(source.filter) : null,
     pollIntervalSec: source.pollIntervalSec,
     lastCursor: source.lastCursor ?? null,
@@ -352,15 +360,22 @@ function sourceToRow(source: SourceRecord) {
 }
 
 function rowToOutput(row: typeof schema.outputs.$inferSelect): OutputRecord {
+  let mutedUntil: string | undefined;
+  if (row.mutedUntil && !Number.isNaN(new Date(row.mutedUntil).getTime())) {
+    mutedUntil =
+      new Date(row.mutedUntil).getTime() > Date.now()
+        ? row.mutedUntil
+        : undefined;
+  }
   return {
     id: row.id!,
     workspaceId: row.workspaceId,
     pluginId: row.pluginId,
     config: JSON.parse(row.configJson) as Record<string, unknown>,
     enabled: row.enabled,
-    mutedUntil: row.mutedUntil ?? undefined,
+    mutedUntil,
     priority: row.priority,
-    schedule: row.scheduleJson
+    schedule: row.scheduleJson?.startsWith("{")
       ? (JSON.parse(row.scheduleJson) as OutputSchedule)
       : undefined,
   };

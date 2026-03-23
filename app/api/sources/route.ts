@@ -17,6 +17,7 @@ const sourceSchema = z.object({
     })
     .optional(),
   outputIds: z.array(z.string()).default([]),
+  outputOverrides: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
   pollIntervalSec: z.number().int().positive().default(300),
   enabled: z.boolean().default(true),
 });
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     pluginId: parsed.pluginId,
     config: parsed.config,
     outputIds: parsed.outputIds,
+    outputOverrides: parsed.outputOverrides,
     filter: parsed.filter,
     pollIntervalSec: parsed.pollIntervalSec,
     enabled: parsed.enabled,

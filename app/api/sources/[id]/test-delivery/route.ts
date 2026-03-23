@@ -72,10 +72,14 @@ export async function POST(
       continue;
     }
     try {
+      const overrides = source.outputOverrides?.[outputId];
+      const mergedConfig = overrides
+        ? { ...output.config, ...overrides }
+        : output.config;
       const sendResult = await connector.send(
         event,
         { workspaceId: DEFAULT_WORKSPACE_ID, outputId, sourceName: source.name },
-        output.config,
+        mergedConfig,
       );
       results.push({ outputId, pluginId: output.pluginId, status: sendResult.status, error: sendResult.error });
     } catch (err) {

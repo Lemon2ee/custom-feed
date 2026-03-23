@@ -12,8 +12,8 @@ export function SecurityBanner() {
     if (localStorage.getItem(DISMISS_KEY)) return;
 
     fetch("/api/security-status")
-      .then((res) => res.json())
-      .then((data: { protected: boolean }) => {
+      .then((res) => res.json() as Promise<{ protected: boolean }>)
+      .then((data) => {
         if (!data.protected) setVisible(true);
       })
       .catch(() => {});

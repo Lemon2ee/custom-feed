@@ -16,6 +16,7 @@ interface ConnectorConfigField {
   required?: boolean;
   placeholder?: string;
   options?: Array<{ value: string; label: string }>;
+  overridable?: boolean;
 }
 
 interface ConnectorCatalogItem {
@@ -181,6 +182,7 @@ export const connectorCatalog: {
             { value: "4", label: "High" },
             { value: "5", label: "Urgent" },
           ],
+          overridable: true,
         },
       ],
     },
@@ -235,6 +237,7 @@ export const connectorCatalog: {
             { value: "timeSensitive", label: "Time Sensitive" },
             { value: "critical", label: "Critical" },
           ],
+          overridable: true,
         },
         {
           key: "sound",
@@ -242,6 +245,7 @@ export const connectorCatalog: {
           type: "text",
           required: false,
           placeholder: "e.g. alarm, birdsong",
+          overridable: true,
         },
       ],
     },

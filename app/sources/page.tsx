@@ -34,8 +34,10 @@ import {
   getInitialValues,
   toPayloadConfig,
   splitKeywordCsv,
+  parseConfigValue,
   type SourceEditState,
   type SourceItem,
+  type ConnectorConfigField,
 } from "@/hooks/use-feed-api";
 
 function connectorHue(name: string): number {
@@ -66,6 +68,9 @@ export default function SourcesPage() {
   const [selectedSourceOutputIds, setSelectedSourceOutputIds] = useState<
     string[]
   >([]);
+  const [newSourceOutputOverrides, setNewSourceOutputOverrides] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [newSourcePollInterval, setNewSourcePollInterval] = useState("300");
 
   const [sourceEdits, setSourceEdits] = useState<
@@ -97,6 +102,33 @@ export default function SourcesPage() {
     );
   });
 
+  function getOverridableFields(pluginId: string): ConnectorConfigField[] {
+    const item = catalog.outputs.find((o) => o.id === pluginId);
+    return item?.configFields.filter((f) => f.overridable) ?? [];
+  }
+
+  function buildOverridesPayload(
+    raw: Record<string, Record<string, string>>,
+  ): Record<string, Record<string, string | number>> {
+    const result: Record<string, Record<string, string | number>> = {};
+    for (const [outputId, fields] of Object.entries(raw)) {
+      const output = outputs.find((o) => o.id === outputId);
+      if (!output) continue;
+      const overridable = getOverridableFields(output.pluginId);
+      const clean: Record<string, string | number> = {};
+      for (const field of overridable) {
+        const val = fields[field.key];
+        if (val !== undefined && val !== "") {
+          clean[field.key] = parseConfigValue(field.type, val);
+        }
+      }
+      if (Object.keys(clean).length > 0) {
+        result[outputId] = clean;
+      }
+    }
+    return result;
+  }
+
   function getEdits(source: (typeof sources)[0]): SourceEditState {
     return (
       sourceEdits[source.id] ?? {
@@ -104,6 +136,14 @@ export default function SourcesPage() {
         includeKeywords: (source.filter?.includeKeywords ?? []).join(", "),
         excludeKeywords: (source.filter?.excludeKeywords ?? []).join(", "),
         outputIds: source.outputIds ?? [],
+        outputOverrides: Object.fromEntries(
+          Object.entries(source.outputOverrides ?? {}).map(([oid, fields]) => [
+            oid,
+            Object.fromEntries(
+              Object.entries(fields).map(([k, v]) => [k, String(v ?? "")]),
+            ),
+          ]),
+        ),
         pollIntervalSec: String(source.pollIntervalSec ?? 300),
         config: Object.fromEntries(
           Object.entries(source.config).map(([k, v]) => [k, String(v ?? "")]),
@@ -132,10 +172,14 @@ export default function SourcesPage() {
     setCreatingSource(true);
     try {
       const pollSec = Number(newSourcePollInterval);
+      const overridesPayload = buildOverridesPayload(newSourceOutputOverrides);
       await createSource({
         pluginId: selectedInput.id,
         name: newSourceName.trim() || undefined,
         outputIds: selectedSourceOutputIds,
+        outputOverrides: Object.keys(overridesPayload).length > 0
+          ? overridesPayload
+          : undefined,
         filter: {
           includeKeywords: splitKeywordCsv(newSourceIncludeKeywords),
           excludeKeywords: splitKeywordCsv(newSourceExcludeKeywords),
@@ -150,6 +194,7 @@ export default function SourcesPage() {
       setNewSourceName("");
       setNewSourceIncludeKeywords("");
       setNewSourceExcludeKeywords("");
+      setNewSourceOutputOverrides({});
       setNewSourcePollInterval("300");
     } finally {
       setCreatingSource(false);
@@ -206,9 +251,11 @@ export default function SourcesPage() {
         ? catalog.inputs.find((c) => c.id === source.pluginId)
         : undefined;
       const pollSec = Number(edits.pollIntervalSec);
+      const overridesPayload = buildOverridesPayload(edits.outputOverrides);
       await saveSourceEdits(sourceId, {
         name: edits.name.trim() || undefined,
         outputIds: edits.outputIds,
+        outputOverrides: overridesPayload,
         filter: {
           includeKeywords: splitKeywordCsv(edits.includeKeywords),
           excludeKeywords: splitKeywordCsv(edits.excludeKeywords),
@@ -364,26 +411,91 @@ export default function SourcesPage() {
                     No outputs available yet.
                   </p>
                 ) : (
-                  outputs.map((output) => (
-                    <label
-                      key={output.id}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedSourceOutputIds.includes(output.id)}
-                        onChange={(e) => {
-                          setSelectedSourceOutputIds((prev) => {
-                            if (e.target.checked) return [...prev, output.id];
-                            return prev.filter((id) => id !== output.id);
-                          });
-                        }}
-                      />
-                      <span>
-                        {output.pluginId} ({output.id.slice(0, 6)})
-                      </span>
-                    </label>
-                  ))
+                  outputs.map((output) => {
+                    const isChecked = selectedSourceOutputIds.includes(output.id);
+                    const overridable = getOverridableFields(output.pluginId);
+                    return (
+                      <div key={output.id} className="space-y-1.5">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              setSelectedSourceOutputIds((prev) => {
+                                if (e.target.checked) return [...prev, output.id];
+                                return prev.filter((id) => id !== output.id);
+                              });
+                            }}
+                          />
+                          <span>
+                            {output.pluginId} ({output.id.slice(0, 6)})
+                          </span>
+                        </label>
+                        {isChecked && overridable.length > 0 && (
+                          <div className="ml-6 space-y-1.5 rounded border border-zinc-100 p-2 dark:border-zinc-800">
+                            <p className="text-[11px] text-zinc-400">
+                              Per-source overrides (blank = use output default)
+                            </p>
+                            {overridable.map((field) => (
+                              <div key={field.key} className="space-y-0.5">
+                                <label className="text-[11px] text-zinc-500">
+                                  {field.label}
+                                </label>
+                                {field.type === "select" && field.options ? (
+                                  <Select
+                                    value={
+                                      newSourceOutputOverrides[output.id]?.[field.key] || "__default__"
+                                    }
+                                    onValueChange={(v) =>
+                                      setNewSourceOutputOverrides((prev) => ({
+                                        ...prev,
+                                        [output.id]: {
+                                          ...(prev[output.id] ?? {}),
+                                          [field.key]: v === "__default__" ? "" : v,
+                                        },
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__default__">
+                                        Use output default
+                                      </SelectItem>
+                                      {field.options.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input
+                                    className="h-8 text-xs"
+                                    type={field.type}
+                                    placeholder={field.placeholder || `Default: use output setting`}
+                                    value={
+                                      newSourceOutputOverrides[output.id]?.[field.key] ?? ""
+                                    }
+                                    onChange={(e) =>
+                                      setNewSourceOutputOverrides((prev) => ({
+                                        ...prev,
+                                        [output.id]: {
+                                          ...(prev[output.id] ?? {}),
+                                          [field.key]: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
@@ -587,33 +699,110 @@ export default function SourcesPage() {
                               No outputs available yet.
                             </p>
                           ) : (
-                            outputs.map((output) => (
-                              <label
-                                key={output.id}
-                                className="flex items-center gap-2 text-sm"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={edits.outputIds.includes(output.id)}
-                                  onChange={(e) =>
-                                    setSourceEdits((prev) => ({
-                                      ...prev,
-                                      [source.id]: {
-                                        ...edits,
-                                        outputIds: e.target.checked
-                                          ? [...edits.outputIds, output.id]
-                                          : edits.outputIds.filter(
-                                              (id) => id !== output.id,
-                                            ),
-                                      },
-                                    }))
-                                  }
-                                />
-                                <span>
-                                  {output.pluginId} ({output.id.slice(0, 6)})
-                                </span>
-                              </label>
-                            ))
+                            outputs.map((output) => {
+                              const isChecked = edits.outputIds.includes(output.id);
+                              const overridable = getOverridableFields(output.pluginId);
+                              return (
+                                <div key={output.id} className="space-y-1.5">
+                                  <label className="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) =>
+                                        setSourceEdits((prev) => ({
+                                          ...prev,
+                                          [source.id]: {
+                                            ...edits,
+                                            outputIds: e.target.checked
+                                              ? [...edits.outputIds, output.id]
+                                              : edits.outputIds.filter(
+                                                  (id) => id !== output.id,
+                                                ),
+                                          },
+                                        }))
+                                      }
+                                    />
+                                    <span>
+                                      {output.pluginId} ({output.id.slice(0, 6)})
+                                    </span>
+                                  </label>
+                                  {isChecked && overridable.length > 0 && (
+                                    <div className="ml-6 space-y-1.5 rounded border border-zinc-100 p-2 dark:border-zinc-800">
+                                      <p className="text-[11px] text-zinc-400">
+                                        Per-source overrides (blank = use output default)
+                                      </p>
+                                      {overridable.map((field) => (
+                                        <div key={field.key} className="space-y-0.5">
+                                          <label className="text-[11px] text-zinc-500">
+                                            {field.label}
+                                          </label>
+                                          {field.type === "select" && field.options ? (
+                                            <Select
+                                              value={
+                                                edits.outputOverrides[output.id]?.[field.key] || "__default__"
+                                              }
+                                              onValueChange={(v) =>
+                                                setSourceEdits((prev) => ({
+                                                  ...prev,
+                                                  [source.id]: {
+                                                    ...edits,
+                                                    outputOverrides: {
+                                                      ...edits.outputOverrides,
+                                                      [output.id]: {
+                                                        ...(edits.outputOverrides[output.id] ?? {}),
+                                                        [field.key]: v === "__default__" ? "" : v,
+                                                      },
+                                                    },
+                                                  },
+                                                }))
+                                              }
+                                            >
+                                              <SelectTrigger className="h-8 text-xs">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__default__">
+                                                  Use output default
+                                                </SelectItem>
+                                                {field.options.map((opt) => (
+                                                  <SelectItem key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          ) : (
+                                            <Input
+                                              className="h-8 text-xs"
+                                              type={field.type}
+                                              placeholder={field.placeholder || `Default: use output setting`}
+                                              value={
+                                                edits.outputOverrides[output.id]?.[field.key] ?? ""
+                                              }
+                                              onChange={(e) =>
+                                                setSourceEdits((prev) => ({
+                                                  ...prev,
+                                                  [source.id]: {
+                                                    ...edits,
+                                                    outputOverrides: {
+                                                      ...edits.outputOverrides,
+                                                      [output.id]: {
+                                                        ...(edits.outputOverrides[output.id] ?? {}),
+                                                        [field.key]: e.target.value,
+                                                      },
+                                                    },
+                                                  },
+                                                }))
+                                              }
+                                            />
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                         <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-800">

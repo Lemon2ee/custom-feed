@@ -55,14 +55,34 @@ Then redeploy with `npx wrangler deploy`. Cloudflare automatically creates the D
 
 By default, the app is open to anyone who knows the URL. There is no data leakage risk, but an unauthenticated visitor could configure sources and push notifications to your devices. The app will show a warning banner if it detects no authentication is in place.
 
-The recommended way to lock it down is **Cloudflare Access** (free for up to 50 users), which adds a login gate in front of your Worker with zero code changes:
+The recommended way to lock it down is **Cloudflare Access** (free for up to 50 users), which adds a login gate in front of your Worker with zero code changes.
+
+### 1. Add GitHub as an identity provider
 
 1. Go to the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com)
-2. Navigate to **Access → Applications → Add an application → Self-hosted**
-3. Set the application domain to your Worker's domain (e.g. `feed.example.com`)
-4. Under **Identity providers**, add at least one — "One-time PIN" is the simplest (Cloudflare emails you a code, no third-party setup)
-5. Create a policy: **Allow** → **Emails** → enter your email address
-6. Save. Visitors now see a Cloudflare login screen before reaching the app.
+2. Navigate to **Settings → Authentication → Login methods → Add new**
+3. Select **GitHub**
+4. You'll need a GitHub OAuth App — [create one here](https://github.com/settings/applications/new):
+   - **Application name**: anything (e.g. `Cloudflare Access`)
+   - **Homepage URL**: `https://<your-team-name>.cloudflareaccess.com`
+   - **Authorization callback URL**: `https://<your-team-name>.cloudflareaccess.com/cdn-cgi/access/callback`
+5. Copy the **Client ID** and **Client Secret** from GitHub into the Cloudflare form
+6. Save. You can click **Test** to verify the connection works.
+
+Your team name is shown in the Zero Trust dashboard URL (e.g. `https://one.dash.cloudflare.com/<account-id>/<team-name>/`), or under **Settings → Custom Pages → Team domain**.
+
+### 2. Create an Access application
+
+1. Navigate to **Access → Applications → Add an application → Self-hosted**
+2. **Application name**: e.g. `custom-feed`
+3. Click **Add public hostname** and enter your domain (e.g. `feed.example.com`)
+4. **Session duration**: `1 month` is a reasonable default
+5. Click **Add a policy**:
+   - **Policy name**: e.g. `allow-me`
+   - **Action**: `Allow`
+   - **Include** rule: selector = **Login Methods**, value = your GitHub provider
+6. Under **Login methods**, make sure your GitHub provider is checked
+7. Save. Visitors now see a GitHub login screen before reaching the app.
 
 If your instance is on a private network (e.g. LAN-only, behind a VPN), you can dismiss the in-app warning and skip this step entirely.
 

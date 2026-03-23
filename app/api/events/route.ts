@@ -1,9 +1,9 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getRepository } from "@/src/db/repositories";
 import { DEFAULT_WORKSPACE_ID } from "@/src/core/constants";
 
-export async function GET(request: NextRequest) {
-  const url = request.nextUrl;
+export async function GET(request: Request) {
+  const url = new URL(request.url);
   const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
 

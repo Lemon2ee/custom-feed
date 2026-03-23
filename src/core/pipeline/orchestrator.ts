@@ -188,10 +188,14 @@ export async function runPendingDeliveries(
     if (!connector) continue;
 
     const source = sources.find((item) => item.id === event.sourceId);
+    const overrides = source?.outputOverrides?.[output.id];
+    const mergedConfig = overrides
+      ? { ...output.config, ...overrides }
+      : output.config;
     const result = await connector.send(
       event,
       { workspaceId, outputId: output.id, sourceName: source?.name },
-      output.config,
+      mergedConfig,
     );
 
     if (result.status === "sent") {

@@ -14,6 +14,7 @@ const patchSchema = z.object({
     })
     .optional(),
   outputIds: z.array(z.string()).optional(),
+  outputOverrides: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
   pollIntervalSec: z.number().int().positive().optional(),
   enabled: z.boolean().optional(),
 });
@@ -51,6 +52,7 @@ export async function PATCH(
     name: parsed.name ?? current.name,
     config: nextConfig,
     outputIds: parsed.outputIds ?? current.outputIds,
+    outputOverrides: parsed.outputOverrides ?? current.outputOverrides,
     filter: parsed.filter ?? current.filter,
     pollIntervalSec: parsed.pollIntervalSec ?? current.pollIntervalSec,
     enabled: parsed.enabled ?? current.enabled,
