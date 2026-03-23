@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useFeedApi } from "@/hooks/use-feed-api";
-import { Cable, BellRing, Puzzle, PlugZap, Newspaper } from "lucide-react";
+import { Cable, BellRing, Puzzle, PlugZap, Newspaper, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,27 @@ export default function OverviewPage() {
     runWorkers,
     toggleAutoPoll,
   } = useFeedApi();
+
+  const [runningOnce, setRunningOnce] = useState(false);
+  const [togglingPoll, setTogglingPoll] = useState(false);
+
+  async function handleRunOnce() {
+    setRunningOnce(true);
+    try {
+      await runWorkers();
+    } finally {
+      setRunningOnce(false);
+    }
+  }
+
+  async function handleTogglePoll() {
+    setTogglingPoll(true);
+    try {
+      await toggleAutoPoll();
+    } finally {
+      setTogglingPoll(false);
+    }
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8">
@@ -159,12 +181,19 @@ export default function OverviewPage() {
               <div className="flex gap-2">
                 <Button
                   variant={autoPoll.running ? "destructive" : "default"}
-                  onClick={toggleAutoPoll}
+                  onClick={handleTogglePoll}
+                  disabled={togglingPoll}
                 >
+                  {togglingPoll && <Loader2 className="h-4 w-4 animate-spin" />}
                   {autoPoll.running ? "Stop Auto-Poll" : "Start Auto-Poll"}
                 </Button>
-                <Button variant="secondary" onClick={runWorkers}>
-                  Run Once
+                <Button
+                  variant="secondary"
+                  onClick={handleRunOnce}
+                  disabled={runningOnce}
+                >
+                  {runningOnce && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {runningOnce ? "Running…" : "Run Once"}
                 </Button>
               </div>
             </CardContent>
