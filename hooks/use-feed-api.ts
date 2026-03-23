@@ -173,6 +173,7 @@ export function useFeedApi() {
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [outputs, setOutputs] = useState<OutputRecord[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
+  const [eventCount, setEventCount] = useState(0);
   const [catalog, setCatalog] = useState<ConnectorCatalog>({
     inputs: [],
     outputs: [],
@@ -195,7 +196,7 @@ export function useFeedApi() {
       ] = await Promise.all([
         jsonFetch<{ data: SourceRecord[] }>("/api/sources"),
         jsonFetch<{ data: OutputRecord[] }>("/api/outputs"),
-        jsonFetch<{ data: EventRecord[] }>("/api/events"),
+        jsonFetch<{ data: EventRecord[]; total: number }>("/api/events?page=1&pageSize=10"),
         jsonFetch<{ data: ConnectorCatalog }>("/api/catalog"),
         jsonFetch<{ data: AutoPollStatus }>("/api/workers/auto-poll"),
       ]);
@@ -207,6 +208,7 @@ export function useFeedApi() {
       setSources(sourcesRes.data);
       setOutputs(outputsRes.data);
       setEvents(eventsRes.data);
+      setEventCount(eventsRes.total);
       setCatalog(safeCatalog);
     } catch {
       toast.error("Failed to load data. Try refreshing the page.");
@@ -449,6 +451,7 @@ export function useFeedApi() {
     sources,
     outputs,
     events,
+    eventCount,
     catalog,
     autoPoll,
     refresh,

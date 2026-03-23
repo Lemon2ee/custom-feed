@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, count as drizzleCount } from "drizzle-orm";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import type { NormalizedEvent } from "@/src/core/events/types";
 import type { Rule } from "@/src/core/rules/types";
@@ -67,6 +67,12 @@ export interface Repository {
   upsertRule(rule: Rule): Promise<void>;
   upsertEvent(event: NormalizedEvent): Promise<{ inserted: boolean }>;
   listEvents(workspaceId: string): Promise<NormalizedEvent[]>;
+  countEvents(workspaceId: string): Promise<number>;
+  listEventsPaginated(
+    workspaceId: string,
+    opts: { page: number; pageSize: number },
+  ): Promise<NormalizedEvent[]>;
+  listDeliveriesByEventIds(eventIds: string[]): Promise<DeliveryRecord[]>;
   upsertDelivery(delivery: DeliveryRecord): Promise<void>;
   listDeliveries(workspaceId: string): Promise<DeliveryRecord[]>;
   getSetting(workspaceId: string, key: string): Promise<string | null>;
@@ -213,6 +219,37 @@ class D1Repository implements Repository {
       .where(eq(schema.events.workspaceId, workspaceId))
       .orderBy(desc(schema.events.publishedAt));
     return rows.map(rowToEvent);
+  }
+
+  async countEvents(workspaceId: string): Promise<number> {
+    const rows = await this.db
+      .select({ value: drizzleCount() })
+      .from(schema.events)
+      .where(eq(schema.events.workspaceId, workspaceId));
+    return rows[0]?.value ?? 0;
+  }
+
+  async listEventsPaginated(
+    workspaceId: string,
+    opts: { page: number; pageSize: number },
+  ): Promise<NormalizedEvent[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.workspaceId, workspaceId))
+      .orderBy(desc(schema.events.publishedAt))
+      .limit(opts.pageSize)
+      .offset((opts.page - 1) * opts.pageSize);
+    return rows.map(rowToEvent);
+  }
+
+  async listDeliveriesByEventIds(eventIds: string[]): Promise<DeliveryRecord[]> {
+    if (eventIds.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(schema.deliveries)
+      .where(inArray(schema.deliveries.eventId, eventIds));
+    return rows.map(rowToDelivery);
   }
 
   async upsertDelivery(delivery: DeliveryRecord): Promise<void> {

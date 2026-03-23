@@ -28,6 +28,7 @@ export default function OverviewPage() {
     sources,
     outputs,
     events,
+    eventCount,
     catalog,
     autoPoll,
     runWorkers,
@@ -106,7 +107,7 @@ export default function OverviewPage() {
                     <Newspaper className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
                   </div>
                   <div>
-                    <p className="text-2xl font-semibold">{events.length}</p>
+                    <p className="text-2xl font-semibold">{eventCount}</p>
                     <p className="text-xs text-zinc-500">Events</p>
                   </div>
                 </CardContent>
