@@ -1,15 +1,22 @@
 name = "custom-feed"
-main = "vinext/server/app-router-entry"
+main = "src/worker-entry.ts"
 compatibility_date = "2026-03-22"
 compatibility_flags = ["nodejs_compat"]
+
+workers_dev = true
+preview_urls = false
 
 [assets]
 not_found_handling = "none"
 
 [[d1_databases]]
-binding = "custom_feed_db"
+binding = "DB"
 database_name = "custom-feed-db"
 database_id = "<your-d1-database-id>"
+migrations_dir = "src/db/migrations"
+
+[triggers]
+crons = ["* * * * *"]
 
 [observability.logs]
 enabled = true
