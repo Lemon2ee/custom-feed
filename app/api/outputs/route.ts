@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     pluginId: parsed.pluginId,
     config: parsed.config,
     enabled: parsed.enabled,
+    priority: 0,
   });
   return NextResponse.json({ ok: true, id });
 }

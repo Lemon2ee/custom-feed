@@ -7,7 +7,7 @@ import { steamNewsInputConnector } from "./input/steam-news";
 import { ntfyOutputConnector } from "./output/ntfy";
 import { barkOutputConnector } from "./output/bark";
 
-type FieldType = "text" | "url" | "number" | "password";
+type FieldType = "text" | "url" | "number" | "password" | "select";
 
 interface ConnectorConfigField {
   key: string;
@@ -15,6 +15,7 @@ interface ConnectorConfigField {
   type: FieldType;
   required?: boolean;
   placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
 }
 
 interface ConnectorCatalogItem {
@@ -168,6 +169,19 @@ export const connectorCatalog: {
           required: false,
           placeholder: "ntfy access token",
         },
+        {
+          key: "priority",
+          label: "Priority",
+          type: "select",
+          required: false,
+          options: [
+            { value: "1", label: "Min" },
+            { value: "2", label: "Low" },
+            { value: "3", label: "Default" },
+            { value: "4", label: "High" },
+            { value: "5", label: "Urgent" },
+          ],
+        },
       ],
     },
     {
@@ -210,6 +224,24 @@ export const connectorCatalog: {
           type: "password",
           required: false,
           placeholder: "16-byte IV, random if omitted",
+        },
+        {
+          key: "level",
+          label: "Alert Level",
+          type: "select",
+          required: false,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "timeSensitive", label: "Time Sensitive" },
+            { value: "critical", label: "Critical" },
+          ],
+        },
+        {
+          key: "sound",
+          label: "Sound (optional)",
+          type: "text",
+          required: false,
+          placeholder: "e.g. alarm, birdsong",
         },
       ],
     },

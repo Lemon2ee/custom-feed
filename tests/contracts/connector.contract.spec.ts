@@ -96,7 +96,7 @@ describe("output connector contract", () => {
     const result = await ntfyOutputConnector.send(
       event,
       { workspaceId: "w1", outputId: "o1" },
-      { baseUrl: "https://ntfy.sh", topic: "hello" },
+      { baseUrl: "https://ntfy.sh", topic: "hello", priority: "3" },
     );
     expect(result.status).toBe("sent");
   });
@@ -109,7 +109,7 @@ describe("output connector contract", () => {
     const result = await barkOutputConnector.send(
       event,
       { workspaceId: "w1", outputId: "o1" },
-      { serverUrl: "https://api.day.app", deviceKey: "abc", encryptionAlgorithm: "aes-256-cbc" },
+      { serverUrl: "https://api.day.app", deviceKey: "abc", encryptionAlgorithm: "aes-256-cbc", level: "active" },
     );
     expect(result.status).toBe("retryable_error");
   });
@@ -125,7 +125,7 @@ describe("output connector contract", () => {
     const result = await barkOutputConnector.send(
       event,
       { workspaceId: "w1", outputId: "o1" },
-      { serverUrl: "https://api.day.app", deviceKey: "abc", encryptionAlgorithm: "aes-256-cbc" },
+      { serverUrl: "https://api.day.app", deviceKey: "abc", encryptionAlgorithm: "aes-256-cbc", level: "active" },
     );
     expect(result.status).toBe("permanent_error");
   });

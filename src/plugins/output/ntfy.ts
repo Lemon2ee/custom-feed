@@ -5,6 +5,7 @@ const configSchema = z.object({
   baseUrl: z.string().url().default("https://ntfy.sh"),
   topic: z.string().min(1),
   token: z.string().optional(),
+  priority: z.enum(["1", "2", "3", "4", "5"]).default("3"),
 });
 
 type NtfyConfig = z.infer<typeof configSchema>;
@@ -27,6 +28,7 @@ export const ntfyOutputConnector: OutputConnector<NtfyConfig> = {
         "Content-Type": "text/plain",
         ...(parsed.token ? { Authorization: `Bearer ${parsed.token}` } : {}),
         Title: event.title,
+        Priority: parsed.priority,
       },
       body: `${event.title}\n${event.url ?? ""}`.trim(),
     });

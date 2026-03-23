@@ -22,12 +22,24 @@ export interface SourceRecord {
   enabled: boolean;
 }
 
+export interface OutputSchedule {
+  timezone: string;
+  windows: Array<{
+    days: number[];
+    startHour: number;
+    endHour: number;
+  }>;
+}
+
 export interface OutputRecord {
   id: string;
   workspaceId: string;
   pluginId: string;
   config: Record<string, unknown>;
   enabled: boolean;
+  mutedUntil?: string;
+  priority: number;
+  schedule?: OutputSchedule;
 }
 
 export interface DeliveryRecord {
@@ -145,6 +157,9 @@ class D1Repository implements Repository {
           pluginId: values.pluginId,
           configJson: values.configJson,
           enabled: values.enabled,
+          mutedUntil: values.mutedUntil,
+          priority: values.priority,
+          scheduleJson: values.scheduleJson,
         },
       });
   }
@@ -306,6 +321,11 @@ function rowToOutput(row: typeof schema.outputs.$inferSelect): OutputRecord {
     pluginId: row.pluginId,
     config: JSON.parse(row.configJson) as Record<string, unknown>,
     enabled: row.enabled,
+    mutedUntil: row.mutedUntil ?? undefined,
+    priority: row.priority,
+    schedule: row.scheduleJson
+      ? (JSON.parse(row.scheduleJson) as OutputSchedule)
+      : undefined,
   };
 }
 
@@ -316,6 +336,9 @@ function outputToRow(output: OutputRecord) {
     pluginId: output.pluginId,
     configJson: JSON.stringify(output.config),
     enabled: output.enabled,
+    mutedUntil: output.mutedUntil ?? null,
+    priority: output.priority,
+    scheduleJson: output.schedule ? JSON.stringify(output.schedule) : null,
   };
 }
 

@@ -2,7 +2,34 @@ import { randomUUID } from "node:crypto";
 import type { InputConnector, OutputConnector } from "../connectors/types";
 import { normalizeEvent } from "../events/normalize";
 import { logger } from "../observability/logger";
-import { getRepository } from "@/src/db/repositories";
+import { getRepository, type OutputSchedule } from "@/src/db/repositories";
+
+export function isWithinDeliveryWindow(
+  schedule: OutputSchedule | undefined,
+  now = new Date(),
+): boolean {
+  if (!schedule || schedule.windows.length === 0) return true;
+
+  let localNow: Date;
+  try {
+    const formatted = now.toLocaleString("en-US", { timeZone: schedule.timezone });
+    localNow = new Date(formatted);
+  } catch {
+    return true;
+  }
+
+  const day = localNow.getDay();
+  const hour = localNow.getHours();
+
+  return schedule.windows.some((w) => {
+    if (!w.days.includes(day)) return false;
+    if (w.startHour <= w.endHour) {
+      return hour >= w.startHour && hour < w.endHour;
+    }
+    // Overnight window (e.g., 22 -> 6)
+    return hour >= w.startHour || hour < w.endHour;
+  });
+}
 
 export function matchesSourceFilter(
   item: {
@@ -144,10 +171,18 @@ export async function runPendingDeliveries(
   const events = await repo.listEvents(workspaceId);
   const sources = await repo.listSources(workspaceId);
 
+  const outputPriorityMap = new Map(outputs.map((o) => [o.id, o.priority]));
+  pending.sort((a, b) =>
+    (outputPriorityMap.get(b.outputId) ?? 0) - (outputPriorityMap.get(a.outputId) ?? 0),
+  );
+
   for (const delivery of pending) {
     const output = outputs.find((item) => item.id === delivery.outputId && item.enabled);
     const event = events.find((item) => item.id === delivery.eventId);
     if (!output || !event) continue;
+
+    if (output.mutedUntil && new Date(output.mutedUntil) > new Date()) continue;
+    if (!isWithinDeliveryWindow(output.schedule)) continue;
 
     const connector = registry.outputs[output.pluginId];
     if (!connector) continue;

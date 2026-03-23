@@ -33,6 +33,9 @@ export const outputs = sqliteTable(
     pluginId: text("plugin_id").notNull(),
     configJson: text("config_json").notNull(),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    mutedUntil: text("muted_until"),
+    priority: integer("priority").notNull().default(0),
+    scheduleJson: text("schedule_json"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({

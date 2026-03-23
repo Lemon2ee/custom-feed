@@ -17,11 +17,23 @@ export interface SourceRecord {
   enabled: boolean;
 }
 
+export interface OutputSchedule {
+  timezone: string;
+  windows: Array<{
+    days: number[];
+    startHour: number;
+    endHour: number;
+  }>;
+}
+
 export interface OutputRecord {
   id: string;
   pluginId: string;
   config: Record<string, unknown>;
   enabled: boolean;
+  mutedUntil?: string;
+  priority: number;
+  schedule?: OutputSchedule;
 }
 
 export interface EventRecord {
@@ -31,7 +43,7 @@ export interface EventRecord {
   publishedAt?: string;
 }
 
-export type FieldType = "text" | "url" | "number" | "password";
+export type FieldType = "text" | "url" | "number" | "password" | "select";
 
 export interface ConnectorConfigField {
   key: string;
@@ -39,6 +51,7 @@ export interface ConnectorConfigField {
   type: FieldType;
   required?: boolean;
   placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
 }
 
 export interface ConnectorCatalogItem {
@@ -145,6 +158,10 @@ export function getInitialValues(
     }
     if (field.key === "serverUrl") {
       values[field.key] = "https://api.day.app";
+      continue;
+    }
+    if (field.type === "select" && field.options?.length) {
+      values[field.key] = field.options[0].value;
       continue;
     }
     values[field.key] = "";
@@ -287,7 +304,13 @@ export function useFeedApi() {
 
   async function updateOutput(
     outputId: string,
-    edits: { config?: Record<string, unknown>; enabled?: boolean },
+    edits: {
+      config?: Record<string, unknown>;
+      enabled?: boolean;
+      mutedUntil?: string | null;
+      priority?: number;
+      schedule?: OutputSchedule | null;
+    },
   ) {
     try {
       await jsonFetch(`/api/outputs/${outputId}`, {

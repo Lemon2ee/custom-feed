@@ -17,6 +17,8 @@ const configSchema = z
     encryptionAlgorithm: z
       .enum(["aes-128-cbc", "aes-192-cbc", "aes-256-cbc"])
       .default("aes-256-cbc"),
+    level: z.enum(["active", "timeSensitive", "critical"]).default("active"),
+    sound: z.string().optional(),
   })
   .refine(
     (v) => {
@@ -72,12 +74,16 @@ async function sendWithPathEndpoint(
   group?: string,
   url?: string,
   icon?: string,
+  level?: string,
+  sound?: string,
 ): Promise<Response> {
   const endpoint = `${baseUrl}/${encodeURIComponent(deviceKey)}/${encodeURIComponent(title)}/${encodeURIComponent(body)}`;
   const query = new URLSearchParams();
   if (group) query.set("group", group);
   if (url) query.set("url", url);
   if (icon) query.set("icon", icon);
+  if (level) query.set("level", level);
+  if (sound) query.set("sound", sound);
   const withQuery = query.size > 0 ? `${endpoint}?${query.toString()}` : endpoint;
   return fetch(withQuery, { method: "GET" });
 }
@@ -90,12 +96,16 @@ async function sendWithPushEndpoint(
   group?: string,
   url?: string,
   icon?: string,
+  level?: string,
+  sound?: string,
 ): Promise<Response> {
   const endpoint = `${baseUrl}/push`;
   const payload: Record<string, string> = { device_key: deviceKey, title, body };
   if (url) payload.url = url;
   if (group) payload.group = group;
   if (icon) payload.icon = icon;
+  if (level) payload.level = level;
+  if (sound) payload.sound = sound;
   return fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -166,10 +176,12 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
       const payload: Record<string, unknown> = {
         title: messageTitle,
         body: messageBody,
+        level: parsed.level,
       };
       if (group) payload.group = group;
       if (event.url) payload.url = event.url;
       if (icon) payload.icon = icon;
+      if (parsed.sound) payload.sound = parsed.sound;
 
       res = await sendEncrypted(
         baseUrl,
@@ -188,6 +200,8 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
         group,
         event.url,
         icon,
+        parsed.level,
+        parsed.sound,
       );
       if (res.status === 404 || res.status === 405) {
         res = await sendWithPushEndpoint(
@@ -198,6 +212,8 @@ export const barkOutputConnector: OutputConnector<BarkConfig> = {
           group,
           event.url,
           icon,
+          parsed.level,
+          parsed.sound,
         );
       }
     }
