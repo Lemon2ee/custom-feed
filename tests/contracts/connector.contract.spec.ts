@@ -38,6 +38,12 @@ describe("input connector contract", () => {
 
   it("hackernews connector validates config shape", () => {
     expect(hackerNewsInputConnector.validateConfig({}).valid).toBe(true);
+    expect(
+      hackerNewsInputConnector.validateConfig({ minScore: 200, topN: 10 }).valid,
+    ).toBe(true);
+    expect(
+      hackerNewsInputConnector.validateConfig({ minScore: -1 }).valid,
+    ).toBe(false);
   });
 
   it("steam-news connector validates config shape", () => {

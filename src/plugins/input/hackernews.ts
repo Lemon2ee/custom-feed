@@ -3,7 +3,10 @@ import type { InputConnector } from "@/src/core/connectors/types";
 
 const HN_API = "https://hacker-news.firebaseio.com/v0";
 
-const configSchema = z.object({});
+const configSchema = z.object({
+  minScore: z.coerce.number().min(0).optional().default(100),
+  topN: z.coerce.number().min(1).max(200).optional().default(30),
+});
 
 type HackerNewsConfig = z.infer<typeof configSchema>;
 
@@ -19,37 +22,7 @@ interface HNItem {
   descendants?: number;
 }
 
-interface HNCursor {
-  currentId: number;
-  notifiedIds: number[];
-}
-
-const MAX_NOTIFIED_IDS = 200;
-
-function parseCursor(raw: string | undefined): HNCursor | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      typeof parsed.currentId === "number"
-    ) {
-      return parsed as HNCursor;
-    }
-  } catch {
-    // Legacy format: plain numeric ID string
-  }
-  const num = Number(raw);
-  if (!Number.isNaN(num) && num > 0) {
-    return { currentId: num, notifiedIds: [num] };
-  }
-  return null;
-}
-
-function serializeCursor(cursor: HNCursor): string {
-  return JSON.stringify(cursor);
-}
+const CURSOR_PREFIX = "v2:";
 
 export const hackerNewsInputConnector: InputConnector<HackerNewsConfig> = {
   kind: "input",
@@ -62,53 +35,54 @@ export const hackerNewsInputConnector: InputConnector<HackerNewsConfig> = {
       : { valid: false, errors: parsed.error.issues.map((issue) => issue.message) };
   },
 
-  async poll(context) {
+  async poll(context, config) {
+    const { minScore, topN } = configSchema.parse(config ?? {});
+
+    // Old cursor was a bare numeric story ID from the v1 "#1 only" connector.
+    // Skip one cycle to seed the new cursor format and avoid a notification burst.
+    if (context.cursor && !context.cursor.startsWith(CURSOR_PREFIX)) {
+      return { items: [], nextCursor: `${CURSOR_PREFIX}${Date.now()}` };
+    }
+
     const topRes = await fetch(`${HN_API}/topstories.json`);
     if (!topRes.ok) throw new Error(`HN topstories returned ${topRes.status}`);
     const topIds = (await topRes.json()) as number[];
 
     if (!topIds.length) return { items: [], nextCursor: context.cursor };
 
-    const topId = topIds[0];
-    const prev = parseCursor(context.cursor);
+    const candidateIds = topIds.slice(0, topN);
 
-    if (prev && topId === prev.currentId) {
-      return { items: [], nextCursor: context.cursor };
-    }
+    const details = await Promise.all(
+      candidateIds.map(async (id) => {
+        const res = await fetch(`${HN_API}/item/${id}.json`);
+        if (!res.ok) return null;
+        return (await res.json()) as HNItem;
+      }),
+    );
 
-    const notifiedIds = prev?.notifiedIds ?? [];
-    const newCursor: HNCursor = {
-      currentId: topId,
-      notifiedIds: [topId, ...notifiedIds].slice(0, MAX_NOTIFIED_IDS),
-    };
-    const nextCursorStr = serializeCursor(newCursor);
+    const qualifying = details.filter(
+      (item): item is HNItem => item !== null && (item.score ?? 0) >= minScore,
+    );
 
-    if (notifiedIds.includes(topId)) {
-      return { items: [], nextCursor: nextCursorStr };
-    }
-
-    const itemRes = await fetch(`${HN_API}/item/${topId}.json`);
-    if (!itemRes.ok) throw new Error(`HN item ${topId} returned ${itemRes.status}`);
-    const item = (await itemRes.json()) as HNItem;
-
-    const hnUrl = `https://news.ycombinator.com/item?id=${item.id}`;
+    const items = qualifying.map((item) => {
+      const hnUrl = `https://news.ycombinator.com/item?id=${item.id}`;
+      return {
+        externalItemId: String(item.id),
+        title: item.title ?? "Untitled",
+        url: item.url ?? hnUrl,
+        contentText: item.text,
+        author: item.by,
+        publishedAt: item.time
+          ? new Date(item.time * 1000).toISOString()
+          : undefined,
+        tags: ["hackernews", item.type ?? "story"],
+        rawPayload: item,
+      };
+    });
 
     return {
-      items: [
-        {
-          externalItemId: String(item.id),
-          title: item.title ?? "Untitled",
-          url: item.url ?? hnUrl,
-          contentText: item.text,
-          author: item.by,
-          publishedAt: item.time
-            ? new Date(item.time * 1000).toISOString()
-            : undefined,
-          tags: ["hackernews", item.type ?? "story"],
-          rawPayload: item,
-        },
-      ],
-      nextCursor: nextCursorStr,
+      items,
+      nextCursor: `${CURSOR_PREFIX}${Date.now()}`,
     };
   },
 };

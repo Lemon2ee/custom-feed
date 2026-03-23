@@ -327,7 +327,7 @@ function rowToSource(row: typeof schema.sources.$inferSelect): SourceRecord {
     pluginId: row.pluginId,
     config: JSON.parse(row.configJson) as Record<string, unknown>,
     outputIds: JSON.parse(row.outputIdsJson) as string[],
-    outputOverrides: row.outputOverridesJson
+    outputOverrides: row.outputOverridesJson?.startsWith("{")
       ? (JSON.parse(row.outputOverridesJson) as Record<string, Record<string, unknown>>)
       : undefined,
     filter: row.filterJson
