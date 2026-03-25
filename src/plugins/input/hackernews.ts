@@ -19,6 +19,38 @@ interface HNItem {
   descendants?: number;
 }
 
+interface HNCursor {
+  currentId: number;
+  notifiedIds: number[];
+}
+
+const MAX_NOTIFIED_IDS = 200;
+
+function parseCursor(raw: string | undefined): HNCursor | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof parsed.currentId === "number"
+    ) {
+      return parsed as HNCursor;
+    }
+  } catch {
+    // Legacy format: plain numeric ID string
+  }
+  const num = Number(raw);
+  if (!Number.isNaN(num) && num > 0) {
+    return { currentId: num, notifiedIds: [num] };
+  }
+  return null;
+}
+
+function serializeCursor(cursor: HNCursor): string {
+  return JSON.stringify(cursor);
+}
+
 export const hackerNewsInputConnector: InputConnector<HackerNewsConfig> = {
   kind: "input",
   id: "hackernews",
@@ -38,9 +70,21 @@ export const hackerNewsInputConnector: InputConnector<HackerNewsConfig> = {
     if (!topIds.length) return { items: [], nextCursor: context.cursor };
 
     const topId = topIds[0];
+    const prev = parseCursor(context.cursor);
 
-    if (context.cursor && String(topId) === context.cursor) {
+    if (prev && topId === prev.currentId) {
       return { items: [], nextCursor: context.cursor };
+    }
+
+    const notifiedIds = prev?.notifiedIds ?? [];
+    const newCursor: HNCursor = {
+      currentId: topId,
+      notifiedIds: [topId, ...notifiedIds].slice(0, MAX_NOTIFIED_IDS),
+    };
+    const nextCursorStr = serializeCursor(newCursor);
+
+    if (notifiedIds.includes(topId)) {
+      return { items: [], nextCursor: nextCursorStr };
     }
 
     const itemRes = await fetch(`${HN_API}/item/${topId}.json`);
@@ -64,7 +108,7 @@ export const hackerNewsInputConnector: InputConnector<HackerNewsConfig> = {
           rawPayload: item,
         },
       ],
-      nextCursor: String(topId),
+      nextCursor: nextCursorStr,
     };
   },
 };
