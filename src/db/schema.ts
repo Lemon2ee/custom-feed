@@ -95,6 +95,7 @@ export interface PollLogsTable {
   items_fetched: number | null;
   new_events: number | null;
   error_message: string | null;
+  details_json: string | null;
 }
 
 export interface Database {

@@ -31,6 +31,7 @@ export interface InputConnector<TConfig = Record<string, unknown>> {
   poll(context: InputPollContext, config: TConfig): Promise<{
     items: ExternalItem[];
     nextCursor?: string;
+    details?: Record<string, unknown>;
   }>;
 }
 

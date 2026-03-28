@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { usePollLogs, type PollLogEntry } from "@/hooks/use-poll-logs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 
 function durationMs(entry: PollLogEntry): string {
   if (!entry.completedAt) return "—";
@@ -19,6 +20,7 @@ function formatTime(iso: string): string {
 
 function PollLogRow({ entry }: { entry: PollLogEntry }) {
   const isError = entry.status === "error";
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <li className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
@@ -51,6 +53,26 @@ function PollLogRow({ entry }: { entry: PollLogEntry }) {
             <p className="mt-1 rounded bg-red-50 px-2 py-1 text-xs text-red-600 dark:bg-red-950/30 dark:text-red-400">
               {entry.errorMessage}
             </p>
+          )}
+          {entry.details != null && (
+            <div>
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-1 flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                {expanded ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                details
+              </button>
+              {expanded && (
+                <pre className="mt-1 overflow-x-auto rounded bg-zinc-50 px-3 py-2 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                  {JSON.stringify(entry.details, null, 2)}
+                </pre>
+              )}
+            </div>
           )}
         </div>
       </div>

@@ -77,6 +77,7 @@ export interface PollLogRecord {
   itemsFetched?: number;
   newEvents?: number;
   errorMessage?: string;
+  details?: Record<string, unknown>;
 }
 
 export interface Repository {
@@ -367,6 +368,7 @@ class D1Repository implements Repository {
         items_fetched: log.itemsFetched ?? null,
         new_events: log.newEvents ?? null,
         error_message: log.errorMessage ?? null,
+        details_json: log.details != null ? JSON.stringify(log.details) : null,
       })
       .execute();
   }
@@ -586,6 +588,9 @@ function rowToPollLog(row: Selectable<PollLogsTable>): PollLogRecord {
     itemsFetched: row.items_fetched ?? undefined,
     newEvents: row.new_events ?? undefined,
     errorMessage: row.error_message ?? undefined,
+    details: row.details_json != null
+      ? (JSON.parse(row.details_json) as Record<string, unknown>)
+      : undefined,
   };
 }
 

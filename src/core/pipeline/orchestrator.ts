@@ -67,6 +67,22 @@ export function matchesSourceFilter(
   return true;
 }
 
+const DETAILS_MAX_BYTES = 64 * 1024;
+
+function sanitizeDetails(raw: unknown): Record<string, unknown> | undefined {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  try {
+    const json = JSON.stringify(raw);
+    if (json.length > DETAILS_MAX_BYTES) {
+      logger.warn("poll details exceeded size limit, dropping", { size: json.length });
+      return undefined;
+    }
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ConnectorRegistry {
   inputs: Record<string, InputConnector<unknown>>;
   outputs: Record<string, OutputConnector<unknown>>;
@@ -114,6 +130,7 @@ export async function runSourcePoll(
     });
     return;
   }
+  const details = sanitizeDetails(polled.details);
   const isInitialSync = !source.lastCursor && !source.lastPolledAt;
 
   let newEvents = 0;
@@ -177,6 +194,7 @@ export async function runSourcePoll(
     status: "success",
     itemsFetched: polled.items.length,
     newEvents,
+    details,
   });
 
   logger.info("source poll completed", {

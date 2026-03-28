@@ -14,6 +14,7 @@ export interface PollLogEntry {
   itemsFetched?: number;
   newEvents?: number;
   errorMessage?: string;
+  details?: Record<string, unknown>;
 }
 
 interface PollLogsResponse {

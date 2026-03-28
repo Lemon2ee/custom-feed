@@ -534,15 +534,22 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
     const parsed = configSchema.parse(config);
     const mid = resolveUid(parsed);
     const limit = parsed.limit;
-    const errors: string[] = [];
+
+    type StrategyAttempt =
+      | { name: string; status: "success" }
+      | { name: string; status: "failed"; error: string };
+    const attempts: StrategyAttempt[] = [];
 
     for (const strategy of strategies) {
       try {
         const result = await strategy.fn(mid, limit, context.cursor);
-        if (errors.length > 0) {
+
+        if (attempts.length > 0) {
           logger.info("bilibili poll succeeded with fallback", {
             strategy: strategy.name,
-            previousErrors: errors,
+            previousErrors: attempts
+              .filter((a): a is Extract<StrategyAttempt, { status: "failed" }> => a.status === "failed")
+              .map((a) => a.error),
           });
         }
 
@@ -554,10 +561,14 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
 
         await backfillDescriptions(result.items);
 
-        return result;
+        attempts.push({ name: strategy.name, status: "success" });
+        return {
+          ...result,
+          details: { mid, strategy: strategy.name, attempts },
+        };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        errors.push(`${strategy.name}: ${msg}`);
+        attempts.push({ name: strategy.name, status: "failed", error: msg });
         logger.warn("bilibili poll strategy failed, trying next", {
           strategy: strategy.name,
           error: msg,
@@ -565,6 +576,11 @@ export const bilibiliInputConnector: InputConnector<BilibiliConfig> = {
       }
     }
 
-    throw new Error(`all bilibili strategies failed: ${errors.join(" → ")}`);
+    throw new Error(
+      `all bilibili strategies failed: ${attempts
+        .filter((a): a is Extract<StrategyAttempt, { status: "failed" }> => a.status === "failed")
+        .map((a) => `${a.name}: ${a.error}`)
+        .join(" → ")}`,
+    );
   },
 };
