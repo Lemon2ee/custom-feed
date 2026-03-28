@@ -116,24 +116,8 @@ export const connectorCatalog: {
       id: "hackernews",
       kind: "input",
       name: "Hacker News Top Stories",
-      description:
-        "Notifies about top Hacker News stories that reach a score threshold.",
-      configFields: [
-        {
-          key: "minScore",
-          label: "Minimum Score",
-          type: "number",
-          required: false,
-          placeholder: "100",
-        },
-        {
-          key: "topN",
-          label: "Top N Stories to Scan",
-          type: "number",
-          required: false,
-          placeholder: "30",
-        },
-      ],
+      description: "Notifies when the #1 story on Hacker News changes.",
+      configFields: [],
     },
     {
       id: "steam-news",
