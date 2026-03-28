@@ -1,9 +1,18 @@
-import { eq, and, desc, inArray, count as drizzleCount } from "drizzle-orm";
-import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
+import { Kysely } from "kysely";
+import type { Selectable, Insertable } from "kysely";
+import { D1Dialect } from "kysely-d1";
 import type { NormalizedEvent } from "@/src/core/events/types";
 import type { Rule } from "@/src/core/rules/types";
 import { createDedupeHash } from "@/src/core/events/dedupe";
-import * as schema from "./schema";
+import type {
+  Database,
+  SourcesTable,
+  OutputsTable,
+  EventsTable,
+  RulesTable,
+  DeliveriesTable,
+  PollLogsTable,
+} from "./schema";
 
 export interface SourceRecord {
   id: string;
@@ -100,154 +109,168 @@ export interface Repository {
 }
 
 // ---------------------------------------------------------------------------
-// D1 (Drizzle) implementation
+// D1 (Kysely) implementation
 // ---------------------------------------------------------------------------
 
-type Db = DrizzleD1Database<Record<string, never>>;
-
 class D1Repository implements Repository {
-  constructor(private db: Db) {}
+  constructor(private db: Kysely<Database>) {}
 
   async listSources(workspaceId: string): Promise<SourceRecord[]> {
     const rows = await this.db
-      .select()
-      .from(schema.sources)
-      .where(eq(schema.sources.workspaceId, workspaceId));
+      .selectFrom("sources")
+      .selectAll()
+      .where("workspace_id", "=", workspaceId)
+      .execute();
     return rows.map(rowToSource);
   }
 
   async upsertSource(source: SourceRecord): Promise<void> {
     const values = sourceToRow(source);
     await this.db
-      .insert(schema.sources)
+      .insertInto("sources")
       .values(values)
-      .onConflictDoUpdate({
-        target: schema.sources.id,
-        set: {
-          workspaceId: values.workspaceId,
+      .onConflict((oc) =>
+        oc.column("id").doUpdateSet({
+          workspace_id: values.workspace_id,
           name: values.name,
-          pluginId: values.pluginId,
-          configJson: values.configJson,
-          outputIdsJson: values.outputIdsJson,
-          outputOverridesJson: values.outputOverridesJson,
-          filterJson: values.filterJson,
-          pollIntervalSec: values.pollIntervalSec,
-          lastCursor: values.lastCursor,
-          lastPolledAt: values.lastPolledAt,
+          plugin_id: values.plugin_id,
+          config_json: values.config_json,
+          output_ids_json: values.output_ids_json,
+          output_overrides_json: values.output_overrides_json,
+          filter_json: values.filter_json,
+          poll_interval_sec: values.poll_interval_sec,
+          last_cursor: values.last_cursor,
+          last_polled_at: values.last_polled_at,
           enabled: values.enabled,
-        },
-      });
+        }),
+      )
+      .execute();
   }
 
   async updateSourceLastPolledAt(sourceId: string, iso: string): Promise<void> {
     await this.db
-      .update(schema.sources)
-      .set({ lastPolledAt: iso })
-      .where(eq(schema.sources.id, sourceId));
+      .updateTable("sources")
+      .set({ last_polled_at: iso })
+      .where("id", "=", sourceId)
+      .execute();
   }
 
   async deleteSource(workspaceId: string, sourceId: string): Promise<void> {
     const eventRows = await this.db
-      .select({ id: schema.events.id })
-      .from(schema.events)
-      .where(eq(schema.events.sourceId, sourceId));
+      .selectFrom("events")
+      .select("id")
+      .where("source_id", "=", sourceId)
+      .execute();
 
-    for (const row of eventRows) {
+    if (eventRows.length > 0) {
+      const eventIds = eventRows.map((r) => r.id);
       await this.db
-        .delete(schema.deliveries)
-        .where(eq(schema.deliveries.eventId, row.id!));
-      await this.db.delete(schema.events).where(eq(schema.events.id, row.id!));
+        .deleteFrom("deliveries")
+        .where("event_id", "in", eventIds)
+        .execute();
     }
 
     await this.db
-      .delete(schema.sources)
-      .where(eq(schema.sources.id, sourceId));
+      .deleteFrom("events")
+      .where("source_id", "=", sourceId)
+      .execute();
+
+    await this.db
+      .deleteFrom("sources")
+      .where("id", "=", sourceId)
+      .execute();
   }
 
   async listOutputs(workspaceId: string): Promise<OutputRecord[]> {
     const rows = await this.db
-      .select()
-      .from(schema.outputs)
-      .where(eq(schema.outputs.workspaceId, workspaceId));
+      .selectFrom("outputs")
+      .selectAll()
+      .where("workspace_id", "=", workspaceId)
+      .execute();
     return rows.map(rowToOutput);
   }
 
   async upsertOutput(output: OutputRecord): Promise<void> {
     const values = outputToRow(output);
     await this.db
-      .insert(schema.outputs)
+      .insertInto("outputs")
       .values(values)
-      .onConflictDoUpdate({
-        target: schema.outputs.id,
-        set: {
-          workspaceId: values.workspaceId,
-          pluginId: values.pluginId,
-          configJson: values.configJson,
+      .onConflict((oc) =>
+        oc.column("id").doUpdateSet({
+          workspace_id: values.workspace_id,
+          plugin_id: values.plugin_id,
+          config_json: values.config_json,
           enabled: values.enabled,
-          mutedUntil: values.mutedUntil,
+          muted_until: values.muted_until,
           priority: values.priority,
-          scheduleJson: values.scheduleJson,
-        },
-      });
+          schedule_json: values.schedule_json,
+        }),
+      )
+      .execute();
   }
 
   async deleteOutput(workspaceId: string, outputId: string): Promise<void> {
     await this.db
-      .delete(schema.outputs)
-      .where(eq(schema.outputs.id, outputId));
+      .deleteFrom("outputs")
+      .where("id", "=", outputId)
+      .execute();
   }
 
   async listRules(workspaceId: string): Promise<Rule[]> {
     const rows = await this.db
-      .select()
-      .from(schema.rules)
-      .where(eq(schema.rules.workspaceId, workspaceId));
+      .selectFrom("rules")
+      .selectAll()
+      .where("workspace_id", "=", workspaceId)
+      .execute();
     return rows.map(rowToRule);
   }
 
   async upsertRule(rule: Rule): Promise<void> {
     const values = ruleToRow(rule);
     await this.db
-      .insert(schema.rules)
+      .insertInto("rules")
       .values(values)
-      .onConflictDoUpdate({
-        target: schema.rules.id,
-        set: {
-          workspaceId: values.workspaceId,
+      .onConflict((oc) =>
+        oc.column("id").doUpdateSet({
+          workspace_id: values.workspace_id,
           name: values.name,
           priority: values.priority,
           enabled: values.enabled,
-          matchJson: values.matchJson,
-          actionJson: values.actionJson,
-        },
-      });
+          match_json: values.match_json,
+          action_json: values.action_json,
+        }),
+      )
+      .execute();
   }
 
   async upsertEvent(event: NormalizedEvent): Promise<{ inserted: boolean }> {
     const values = eventToRow(event);
     const result = await this.db
-      .insert(schema.events)
+      .insertInto("events")
       .values(values)
-      .onConflictDoNothing()
-      .returning({ id: schema.events.id });
+      .onConflict((oc) => oc.doNothing())
+      .returning("id")
+      .execute();
     return { inserted: result.length > 0 };
   }
 
   async listEvents(workspaceId: string): Promise<NormalizedEvent[]> {
     const rows = await this.db
-      .select()
-      .from(schema.events)
-      .where(eq(schema.events.workspaceId, workspaceId))
-      .orderBy(desc(schema.events.publishedAt));
+      .selectFrom("events")
+      .selectAll()
+      .where("workspace_id", "=", workspaceId)
+      .orderBy("published_at", "desc")
+      .execute();
     return rows.map(rowToEvent);
   }
 
   async countEvents(workspaceId: string): Promise<number> {
-    const rows = await this.db
-      .select({ value: drizzleCount() })
-      .from(schema.events)
-      .where(eq(schema.events.workspaceId, workspaceId));
-    return rows[0]?.value ?? 0;
+    const result = await this.db
+      .selectFrom("events")
+      .select(({ fn }) => fn.countAll<number>().as("count"))
+      .where("workspace_id", "=", workspaceId)
+      .executeTakeFirst();
+    return Number(result?.count ?? 0);
   }
 
   async listEventsPaginated(
@@ -255,65 +278,64 @@ class D1Repository implements Repository {
     opts: { page: number; pageSize: number },
   ): Promise<NormalizedEvent[]> {
     const rows = await this.db
-      .select()
-      .from(schema.events)
-      .where(eq(schema.events.workspaceId, workspaceId))
-      .orderBy(desc(schema.events.publishedAt))
+      .selectFrom("events")
+      .selectAll()
+      .where("workspace_id", "=", workspaceId)
+      .orderBy("published_at", "desc")
       .limit(opts.pageSize)
-      .offset((opts.page - 1) * opts.pageSize);
+      .offset((opts.page - 1) * opts.pageSize)
+      .execute();
     return rows.map(rowToEvent);
   }
 
   async listDeliveriesByEventIds(eventIds: string[]): Promise<DeliveryRecord[]> {
     if (eventIds.length === 0) return [];
     const rows = await this.db
-      .select()
-      .from(schema.deliveries)
-      .where(inArray(schema.deliveries.eventId, eventIds));
+      .selectFrom("deliveries")
+      .selectAll()
+      .where("event_id", "in", eventIds)
+      .execute();
     return rows.map(rowToDelivery);
   }
 
   async upsertDelivery(delivery: DeliveryRecord): Promise<void> {
     const values = deliveryToRow(delivery);
     await this.db
-      .insert(schema.deliveries)
+      .insertInto("deliveries")
       .values(values)
-      .onConflictDoUpdate({
-        target: schema.deliveries.id,
-        set: {
-          workspaceId: values.workspaceId,
-          eventId: values.eventId,
-          outputId: values.outputId,
+      .onConflict((oc) =>
+        oc.column("id").doUpdateSet({
+          workspace_id: values.workspace_id,
+          event_id: values.event_id,
+          output_id: values.output_id,
           status: values.status,
-          attemptCount: values.attemptCount,
-          lastError: values.lastError,
-          nextRetryAt: values.nextRetryAt,
-          sentAt: values.sentAt,
-          receiptJson: values.receiptJson,
-        },
-      });
+          attempt_count: values.attempt_count,
+          last_error: values.last_error,
+          next_retry_at: values.next_retry_at,
+          sent_at: values.sent_at,
+          receipt_json: values.receipt_json,
+        }),
+      )
+      .execute();
   }
 
   async listDeliveries(workspaceId: string): Promise<DeliveryRecord[]> {
     const rows = await this.db
-      .select()
-      .from(schema.deliveries)
-      .where(eq(schema.deliveries.workspaceId, workspaceId));
+      .selectFrom("deliveries")
+      .selectAll()
+      .where("workspace_id", "=", workspaceId)
+      .execute();
     return rows.map(rowToDelivery);
   }
 
   async getSetting(workspaceId: string, key: string): Promise<string | null> {
-    const rows = await this.db
-      .select()
-      .from(schema.workspaceSettings)
-      .where(
-        and(
-          eq(schema.workspaceSettings.workspaceId, workspaceId),
-          eq(schema.workspaceSettings.key, key),
-        ),
-      )
-      .limit(1);
-    return rows[0]?.value ?? null;
+    const row = await this.db
+      .selectFrom("workspace_settings")
+      .select("value")
+      .where("workspace_id", "=", workspaceId)
+      .where("key", "=", key)
+      .executeTakeFirst();
+    return row?.value ?? null;
   }
 
   async setSetting(
@@ -322,53 +344,55 @@ class D1Repository implements Repository {
     value: string,
   ): Promise<void> {
     await this.db
-      .insert(schema.workspaceSettings)
-      .values({ workspaceId, key, value })
-      .onConflictDoUpdate({
-        target: [
-          schema.workspaceSettings.workspaceId,
-          schema.workspaceSettings.key,
-        ],
-        set: { value },
-      });
+      .insertInto("workspace_settings")
+      .values({ workspace_id: workspaceId, key, value })
+      .onConflict((oc) =>
+        oc.columns(["workspace_id", "key"]).doUpdateSet({ value }),
+      )
+      .execute();
   }
 
   async insertPollLog(log: PollLogRecord): Promise<void> {
-    await this.db.insert(schema.pollLogs).values({
-      id: log.id,
-      workspaceId: log.workspaceId,
-      sourceId: log.sourceId,
-      sourceName: log.sourceName,
-      connectorId: log.connectorId,
-      startedAt: log.startedAt,
-      completedAt: log.completedAt ?? null,
-      status: log.status,
-      itemsFetched: log.itemsFetched ?? null,
-      newEvents: log.newEvents ?? null,
-      errorMessage: log.errorMessage ?? null,
-    });
+    await this.db
+      .insertInto("poll_logs")
+      .values({
+        id: log.id,
+        workspace_id: log.workspaceId,
+        source_id: log.sourceId,
+        source_name: log.sourceName,
+        connector_id: log.connectorId,
+        started_at: log.startedAt,
+        completed_at: log.completedAt ?? null,
+        status: log.status,
+        items_fetched: log.itemsFetched ?? null,
+        new_events: log.newEvents ?? null,
+        error_message: log.errorMessage ?? null,
+      })
+      .execute();
   }
 
   async listPollLogsPaginated(
     workspaceId: string,
     opts: { page: number; pageSize: number },
   ): Promise<{ data: PollLogRecord[]; total: number }> {
-    const [rows, countRows] = await Promise.all([
+    const [rows, countResult] = await Promise.all([
       this.db
-        .select()
-        .from(schema.pollLogs)
-        .where(eq(schema.pollLogs.workspaceId, workspaceId))
-        .orderBy(desc(schema.pollLogs.startedAt))
+        .selectFrom("poll_logs")
+        .selectAll()
+        .where("workspace_id", "=", workspaceId)
+        .orderBy("started_at", "desc")
         .limit(opts.pageSize)
-        .offset((opts.page - 1) * opts.pageSize),
+        .offset((opts.page - 1) * opts.pageSize)
+        .execute(),
       this.db
-        .select({ value: drizzleCount() })
-        .from(schema.pollLogs)
-        .where(eq(schema.pollLogs.workspaceId, workspaceId)),
+        .selectFrom("poll_logs")
+        .select(({ fn }) => fn.countAll<number>().as("count"))
+        .where("workspace_id", "=", workspaceId)
+        .executeTakeFirst(),
     ]);
     return {
       data: rows.map(rowToPollLog),
-      total: countRows[0]?.value ?? 0,
+      total: Number(countResult?.count ?? 0),
     };
   }
 }
@@ -377,195 +401,191 @@ class D1Repository implements Repository {
 // Row <-> domain mappers
 // ---------------------------------------------------------------------------
 
-function rowToSource(row: typeof schema.sources.$inferSelect): SourceRecord {
+function rowToSource(row: Selectable<SourcesTable>): SourceRecord {
   return {
-    id: row.id!,
-    workspaceId: row.workspaceId,
+    id: row.id,
+    workspaceId: row.workspace_id,
     name: row.name,
-    pluginId: row.pluginId,
-    config: JSON.parse(row.configJson) as Record<string, unknown>,
-    outputIds: JSON.parse(row.outputIdsJson) as string[],
-    outputOverrides: row.outputOverridesJson?.startsWith("{")
-      ? (JSON.parse(row.outputOverridesJson) as Record<string, Record<string, unknown>>)
+    pluginId: row.plugin_id,
+    config: JSON.parse(row.config_json) as Record<string, unknown>,
+    outputIds: JSON.parse(row.output_ids_json) as string[],
+    outputOverrides: row.output_overrides_json?.startsWith("{")
+      ? (JSON.parse(row.output_overrides_json) as Record<string, Record<string, unknown>>)
       : undefined,
-    filter: row.filterJson
-      ? (JSON.parse(row.filterJson) as SourceRecord["filter"])
+    filter: row.filter_json
+      ? (JSON.parse(row.filter_json) as SourceRecord["filter"])
       : undefined,
-    pollIntervalSec: row.pollIntervalSec,
-    lastCursor: row.lastCursor ?? undefined,
-    lastPolledAt: row.lastPolledAt ?? undefined,
-    enabled: row.enabled,
+    pollIntervalSec: row.poll_interval_sec,
+    lastCursor: row.last_cursor ?? undefined,
+    lastPolledAt: row.last_polled_at ?? undefined,
+    enabled: row.enabled === 1,
   };
 }
 
-function sourceToRow(source: SourceRecord) {
+function sourceToRow(source: SourceRecord): Insertable<SourcesTable> {
   return {
     id: source.id,
-    workspaceId: source.workspaceId,
+    workspace_id: source.workspaceId,
     name: source.name,
-    pluginId: source.pluginId,
-    configJson: JSON.stringify(source.config),
-    outputIdsJson: JSON.stringify(source.outputIds),
-    outputOverridesJson: source.outputOverrides
+    plugin_id: source.pluginId,
+    config_json: JSON.stringify(source.config),
+    output_ids_json: JSON.stringify(source.outputIds),
+    output_overrides_json: source.outputOverrides
       ? JSON.stringify(source.outputOverrides)
       : null,
-    filterJson: source.filter ? JSON.stringify(source.filter) : null,
-    pollIntervalSec: source.pollIntervalSec,
-    lastCursor: source.lastCursor ?? null,
-    lastPolledAt: source.lastPolledAt ?? null,
-    enabled: source.enabled,
+    filter_json: source.filter ? JSON.stringify(source.filter) : null,
+    poll_interval_sec: source.pollIntervalSec,
+    last_cursor: source.lastCursor ?? null,
+    last_polled_at: source.lastPolledAt ?? null,
+    enabled: source.enabled ? 1 : 0,
   };
 }
 
-function rowToOutput(row: typeof schema.outputs.$inferSelect): OutputRecord {
+function rowToOutput(row: Selectable<OutputsTable>): OutputRecord {
   let mutedUntil: string | undefined;
-  if (row.mutedUntil && !Number.isNaN(new Date(row.mutedUntil).getTime())) {
+  if (row.muted_until && !Number.isNaN(new Date(row.muted_until).getTime())) {
     mutedUntil =
-      new Date(row.mutedUntil).getTime() > Date.now()
-        ? row.mutedUntil
+      new Date(row.muted_until).getTime() > Date.now()
+        ? row.muted_until
         : undefined;
   }
   return {
-    id: row.id!,
-    workspaceId: row.workspaceId,
-    pluginId: row.pluginId,
-    config: JSON.parse(row.configJson) as Record<string, unknown>,
-    enabled: row.enabled,
+    id: row.id,
+    workspaceId: row.workspace_id,
+    pluginId: row.plugin_id,
+    config: JSON.parse(row.config_json) as Record<string, unknown>,
+    enabled: row.enabled === 1,
     mutedUntil,
     priority: row.priority,
-    schedule: row.scheduleJson?.startsWith("{")
-      ? (JSON.parse(row.scheduleJson) as OutputSchedule)
+    schedule: row.schedule_json?.startsWith("{")
+      ? (JSON.parse(row.schedule_json) as OutputSchedule)
       : undefined,
   };
 }
 
-function outputToRow(output: OutputRecord) {
+function outputToRow(output: OutputRecord): Insertable<OutputsTable> {
   return {
     id: output.id,
-    workspaceId: output.workspaceId,
-    pluginId: output.pluginId,
-    configJson: JSON.stringify(output.config),
-    enabled: output.enabled,
-    mutedUntil: output.mutedUntil ?? null,
+    workspace_id: output.workspaceId,
+    plugin_id: output.pluginId,
+    config_json: JSON.stringify(output.config),
+    enabled: output.enabled ? 1 : 0,
+    muted_until: output.mutedUntil ?? null,
     priority: output.priority,
-    scheduleJson: output.schedule ? JSON.stringify(output.schedule) : null,
+    schedule_json: output.schedule ? JSON.stringify(output.schedule) : null,
   };
 }
 
-function rowToRule(row: typeof schema.rules.$inferSelect): Rule {
+function rowToRule(row: Selectable<RulesTable>): Rule {
   return {
-    id: row.id!,
-    workspaceId: row.workspaceId,
+    id: row.id,
+    workspaceId: row.workspace_id,
     name: row.name,
     priority: row.priority,
-    enabled: row.enabled,
-    condition: JSON.parse(row.matchJson) as Rule["condition"],
-    action: JSON.parse(row.actionJson) as Rule["action"],
+    enabled: row.enabled === 1,
+    condition: JSON.parse(row.match_json) as Rule["condition"],
+    action: JSON.parse(row.action_json) as Rule["action"],
   };
 }
 
-function ruleToRow(rule: Rule) {
+function ruleToRow(rule: Rule): Insertable<RulesTable> {
   return {
     id: rule.id,
-    workspaceId: rule.workspaceId,
+    workspace_id: rule.workspaceId,
     name: rule.name,
     priority: rule.priority,
-    enabled: rule.enabled,
-    matchJson: JSON.stringify(rule.condition),
-    actionJson: JSON.stringify(rule.action),
+    enabled: rule.enabled ? 1 : 0,
+    match_json: JSON.stringify(rule.condition),
+    action_json: JSON.stringify(rule.action),
   };
 }
 
-function rowToEvent(row: typeof schema.events.$inferSelect): NormalizedEvent {
+function rowToEvent(row: Selectable<EventsTable>): NormalizedEvent {
   return {
-    id: row.id!,
-    workspaceId: row.workspaceId,
-    sourceId: row.sourceId,
-    sourceType: row.sourceType as NormalizedEvent["sourceType"],
-    externalItemId: row.externalItemId,
+    id: row.id,
+    workspaceId: row.workspace_id,
+    sourceId: row.source_id,
+    sourceType: row.source_type as NormalizedEvent["sourceType"],
+    externalItemId: row.external_item_id,
     title: row.title,
     url: row.url ?? undefined,
-    contentText: row.contentText ?? undefined,
+    contentText: row.content_text ?? undefined,
     author: row.author ?? undefined,
-    publishedAt: row.publishedAt ?? undefined,
-    imageUrl: row.imageUrl ?? undefined,
-    authorImageUrl: row.authorImageUrl ?? undefined,
-    tags: JSON.parse(row.tagsJson) as string[],
-    rawPayload: JSON.parse(row.rawJson) as unknown,
-    createdAt: row.createdAt,
+    publishedAt: row.published_at ?? undefined,
+    imageUrl: row.image_url ?? undefined,
+    authorImageUrl: row.author_image_url ?? undefined,
+    tags: JSON.parse(row.tags_json) as string[],
+    rawPayload: JSON.parse(row.raw_json) as unknown,
+    createdAt: row.created_at,
   };
 }
 
-function eventToRow(event: NormalizedEvent) {
+function eventToRow(event: NormalizedEvent): Insertable<EventsTable> {
   return {
     id: event.id,
-    workspaceId: event.workspaceId,
-    sourceId: event.sourceId,
-    sourceType: event.sourceType,
-    externalItemId: event.externalItemId,
-    dedupeHash: createDedupeHash(event),
+    workspace_id: event.workspaceId,
+    source_id: event.sourceId,
+    source_type: event.sourceType,
+    external_item_id: event.externalItemId,
+    dedupe_hash: createDedupeHash(event),
     title: event.title,
     url: event.url ?? null,
-    contentText: event.contentText ?? null,
+    content_text: event.contentText ?? null,
     author: event.author ?? null,
-    publishedAt: event.publishedAt ?? null,
-    imageUrl: event.imageUrl ?? null,
-    authorImageUrl: event.authorImageUrl ?? null,
-    tagsJson: JSON.stringify(event.tags),
-    rawJson: JSON.stringify(event.rawPayload),
-    createdAt: event.createdAt,
+    published_at: event.publishedAt ?? null,
+    image_url: event.imageUrl ?? null,
+    author_image_url: event.authorImageUrl ?? null,
+    tags_json: JSON.stringify(event.tags),
+    raw_json: JSON.stringify(event.rawPayload),
+    created_at: event.createdAt,
   };
 }
 
-function rowToDelivery(
-  row: typeof schema.deliveries.$inferSelect,
-): DeliveryRecord {
+function rowToDelivery(row: Selectable<DeliveriesTable>): DeliveryRecord {
   return {
-    id: row.id!,
-    workspaceId: row.workspaceId,
-    eventId: row.eventId,
-    outputId: row.outputId,
+    id: row.id,
+    workspaceId: row.workspace_id,
+    eventId: row.event_id,
+    outputId: row.output_id,
     status: row.status as DeliveryRecord["status"],
-    attemptCount: row.attemptCount,
-    lastError: row.lastError ?? undefined,
-    nextRetryAt: row.nextRetryAt ?? undefined,
-    sentAt: row.sentAt ?? undefined,
-    receipt: row.receiptJson
-      ? (JSON.parse(row.receiptJson) as Record<string, unknown>)
+    attemptCount: row.attempt_count,
+    lastError: row.last_error ?? undefined,
+    nextRetryAt: row.next_retry_at ?? undefined,
+    sentAt: row.sent_at ?? undefined,
+    receipt: row.receipt_json
+      ? (JSON.parse(row.receipt_json) as Record<string, unknown>)
       : undefined,
   };
 }
 
-function deliveryToRow(delivery: DeliveryRecord) {
+function deliveryToRow(delivery: DeliveryRecord): Insertable<DeliveriesTable> {
   return {
     id: delivery.id,
-    workspaceId: delivery.workspaceId,
-    eventId: delivery.eventId,
-    outputId: delivery.outputId,
+    workspace_id: delivery.workspaceId,
+    event_id: delivery.eventId,
+    output_id: delivery.outputId,
     status: delivery.status,
-    attemptCount: delivery.attemptCount,
-    lastError: delivery.lastError ?? null,
-    nextRetryAt: delivery.nextRetryAt ?? null,
-    sentAt: delivery.sentAt ?? null,
-    receiptJson: delivery.receipt ? JSON.stringify(delivery.receipt) : null,
+    attempt_count: delivery.attemptCount,
+    last_error: delivery.lastError ?? null,
+    next_retry_at: delivery.nextRetryAt ?? null,
+    sent_at: delivery.sentAt ?? null,
+    receipt_json: delivery.receipt ? JSON.stringify(delivery.receipt) : null,
   };
 }
 
-function rowToPollLog(
-  row: typeof schema.pollLogs.$inferSelect,
-): PollLogRecord {
+function rowToPollLog(row: Selectable<PollLogsTable>): PollLogRecord {
   return {
-    id: row.id!,
-    workspaceId: row.workspaceId,
-    sourceId: row.sourceId,
-    sourceName: row.sourceName,
-    connectorId: row.connectorId,
-    startedAt: row.startedAt,
-    completedAt: row.completedAt ?? undefined,
+    id: row.id,
+    workspaceId: row.workspace_id,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    connectorId: row.connector_id,
+    startedAt: row.started_at,
+    completedAt: row.completed_at ?? undefined,
     status: row.status as PollLogRecord["status"],
-    itemsFetched: row.itemsFetched ?? undefined,
-    newEvents: row.newEvents ?? undefined,
-    errorMessage: row.errorMessage ?? undefined,
+    itemsFetched: row.items_fetched ?? undefined,
+    newEvents: row.new_events ?? undefined,
+    errorMessage: row.error_message ?? undefined,
   };
 }
 
@@ -584,7 +604,10 @@ try {
 let cachedRepo: Repository | undefined;
 
 export function createD1Repository(d1: D1Database): Repository {
-  return new D1Repository(drizzle(d1) as unknown as Db);
+  const db = new Kysely<Database>({
+    dialect: new D1Dialect({ database: d1 }),
+  });
+  return new D1Repository(db);
 }
 
 export function getRepository(): Repository {

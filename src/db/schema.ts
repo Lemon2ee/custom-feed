@@ -1,141 +1,108 @@
-import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+// Kysely Database type definitions.
+// Column names mirror the actual SQLite column names (snake_case).
+// Boolean columns are typed as 0 | 1 — SQLite has no native boolean type.
+// Generated<T> marks columns that have SQL DEFAULTs: required in selects,
+// optional in inserts.
 
-export const sources = sqliteTable(
-  "sources",
-  {
-    id: text("id").primaryKey(),
-    workspaceId: text("workspace_id").notNull(),
-    name: text("name").notNull().default(""),
-    pluginId: text("plugin_id").notNull(),
-    configJson: text("config_json").notNull(),
-    outputIdsJson: text("output_ids_json").notNull().default("[]"),
-    outputOverridesJson: text("output_overrides_json"),
-    filterJson: text("filter_json"),
-    pollIntervalSec: integer("poll_interval_sec").notNull().default(300),
-    lastCursor: text("last_cursor"),
-    lastPolledAt: text("last_polled_at"),
-    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    workspaceEnabledIdx: uniqueIndex("sources_workspace_id_id_uq").on(
-      table.workspaceId,
-      table.id,
-    ),
-  }),
-);
+import type { Generated } from "kysely";
 
-export const outputs = sqliteTable(
-  "outputs",
-  {
-    id: text("id").primaryKey(),
-    workspaceId: text("workspace_id").notNull(),
-    pluginId: text("plugin_id").notNull(),
-    configJson: text("config_json").notNull(),
-    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-    mutedUntil: text("muted_until"),
-    priority: integer("priority").notNull().default(0),
-    scheduleJson: text("schedule_json"),
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    workspaceEnabledIdx: uniqueIndex("outputs_workspace_id_id_uq").on(
-      table.workspaceId,
-      table.id,
-    ),
-  }),
-);
+export interface SourcesTable {
+  id: string;
+  workspace_id: string;
+  name: string;
+  plugin_id: string;
+  config_json: string;
+  output_ids_json: string;
+  output_overrides_json: string | null;
+  filter_json: string | null;
+  poll_interval_sec: number;
+  last_cursor: string | null;
+  last_polled_at: string | null;
+  enabled: 0 | 1;
+  created_at: Generated<string>;
+}
 
-export const events = sqliteTable(
-  "events",
-  {
-    id: text("id").primaryKey(),
-    workspaceId: text("workspace_id").notNull(),
-    sourceId: text("source_id").notNull(),
-    sourceType: text("source_type").notNull(),
-    externalItemId: text("external_item_id").notNull(),
-    dedupeHash: text("dedupe_hash").notNull(),
-    title: text("title").notNull(),
-    url: text("url"),
-    contentText: text("content_text"),
-    author: text("author"),
-    publishedAt: text("published_at"),
-    imageUrl: text("image_url"),
-    authorImageUrl: text("author_image_url"),
-    tagsJson: text("tags_json").notNull(),
-    rawJson: text("raw_json").notNull(),
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    sourceExternalUniq: uniqueIndex("events_workspace_source_external_uq").on(
-      table.workspaceId,
-      table.sourceId,
-      table.externalItemId,
-    ),
-    hashUniq: uniqueIndex("events_workspace_hash_uq").on(
-      table.workspaceId,
-      table.dedupeHash,
-    ),
-  }),
-);
+export interface OutputsTable {
+  id: string;
+  workspace_id: string;
+  plugin_id: string;
+  config_json: string;
+  enabled: 0 | 1;
+  muted_until: string | null;
+  priority: number;
+  schedule_json: string | null;
+  created_at: Generated<string>;
+}
 
-export const rules = sqliteTable("rules", {
-  id: text("id").primaryKey(),
-  workspaceId: text("workspace_id").notNull(),
-  name: text("name").notNull(),
-  priority: integer("priority").notNull().default(100),
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-  matchJson: text("match_json").notNull(),
-  actionJson: text("action_json").notNull(),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
+export interface EventsTable {
+  id: string;
+  workspace_id: string;
+  source_id: string;
+  source_type: string;
+  external_item_id: string;
+  dedupe_hash: string;
+  title: string;
+  url: string | null;
+  content_text: string | null;
+  author: string | null;
+  published_at: string | null;
+  image_url: string | null;
+  author_image_url: string | null;
+  tags_json: string;
+  raw_json: string;
+  created_at: Generated<string>;
+}
 
-export const deliveries = sqliteTable(
-  "deliveries",
-  {
-    id: text("id").primaryKey(),
-    workspaceId: text("workspace_id").notNull(),
-    eventId: text("event_id").notNull(),
-    outputId: text("output_id").notNull(),
-    status: text("status").notNull(),
-    attemptCount: integer("attempt_count").notNull().default(0),
-    lastError: text("last_error"),
-    nextRetryAt: text("next_retry_at"),
-    sentAt: text("sent_at"),
-    receiptJson: text("receipt_json"),
-  },
-  (table) => ({
-    uniqueEventOutput: uniqueIndex("deliveries_event_output_uq").on(
-      table.eventId,
-      table.outputId,
-    ),
-  }),
-);
+export interface RulesTable {
+  id: string;
+  workspace_id: string;
+  name: string;
+  priority: number;
+  enabled: 0 | 1;
+  match_json: string;
+  action_json: string;
+  created_at: Generated<string>;
+}
 
-export const workspaceSettings = sqliteTable(
-  "workspace_settings",
-  {
-    workspaceId: text("workspace_id").notNull(),
-    key: text("key").notNull(),
-    value: text("value").notNull(),
-  },
-  (table) => ({
-    pk: uniqueIndex("workspace_settings_pk").on(table.workspaceId, table.key),
-  }),
-);
+export interface DeliveriesTable {
+  id: string;
+  workspace_id: string;
+  event_id: string;
+  output_id: string;
+  status: string;
+  attempt_count: number;
+  last_error: string | null;
+  next_retry_at: string | null;
+  sent_at: string | null;
+  receipt_json: string | null;
+}
 
-export const pollLogs = sqliteTable("poll_logs", {
-  id: text("id").primaryKey(),
-  workspaceId: text("workspace_id").notNull(),
-  sourceId: text("source_id").notNull(),
-  sourceName: text("source_name").notNull().default(""),
-  connectorId: text("connector_id").notNull(),
-  startedAt: text("started_at").notNull(),
-  completedAt: text("completed_at"),
-  status: text("status").notNull(), // "success" | "error"
-  itemsFetched: integer("items_fetched"),
-  newEvents: integer("new_events"),
-  errorMessage: text("error_message"),
-});
+export interface WorkspaceSettingsTable {
+  workspace_id: string;
+  key: string;
+  value: string;
+}
 
+export interface PollLogsTable {
+  id: string;
+  workspace_id: string;
+  source_id: string;
+  source_name: string;
+  connector_id: string;
+  started_at: string;
+  completed_at: string | null;
+  status: string; // "success" | "error"
+  items_fetched: number | null;
+  new_events: number | null;
+  error_message: string | null;
+}
+
+export interface Database {
+  sources: SourcesTable;
+  outputs: OutputsTable;
+  events: EventsTable;
+  rules: RulesTable;
+  deliveries: DeliveriesTable;
+  workspace_settings: WorkspaceSettingsTable;
+  poll_logs: PollLogsTable;
+}
