@@ -1,14 +1,7 @@
-import { z } from "zod";
 import type { InputConnector } from "@/src/core/connectors/types";
 
 const HN_API = "https://hacker-news.firebaseio.com/v0";
-
-const configSchema = z.object({
-  minScore: z.coerce.number().min(0).optional().default(100),
-  topN: z.coerce.number().min(1).max(200).optional().default(30),
-});
-
-type HackerNewsConfig = z.infer<typeof configSchema>;
+const MAX_NOTIFIED = 200;
 
 interface HNItem {
   id: number;
@@ -22,67 +15,101 @@ interface HNItem {
   descendants?: number;
 }
 
-const CURSOR_PREFIX = "v2:";
+interface Cursor {
+  currentId: number;
+  notifiedIds: number[];
+}
 
-export const hackerNewsInputConnector: InputConnector<HackerNewsConfig> = {
+function parseCursor(raw: string | undefined): Cursor | null {
+  if (!raw) return null;
+
+  // Legacy: plain numeric string from v1 connector
+  const num = Number(raw);
+  if (!isNaN(num) && String(num) === raw) {
+    return { currentId: num, notifiedIds: [num] };
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.currentId === "number" && Array.isArray(parsed?.notifiedIds)) {
+      return parsed as Cursor;
+    }
+  } catch {
+    // fall through
+  }
+
+  return null;
+}
+
+interface HNConfig {
+  minScore?: number;
+  topN?: number;
+}
+
+export const hackerNewsInputConnector: InputConnector<HNConfig> = {
   kind: "input",
   id: "hackernews",
 
   validateConfig(config) {
-    const parsed = configSchema.safeParse(config);
-    return parsed.success
-      ? { valid: true }
-      : { valid: false, errors: parsed.error.issues.map((issue) => issue.message) };
+    const c = config as HNConfig;
+    if (c.minScore !== undefined && c.minScore < 0) {
+      return { valid: false, error: "minScore must be >= 0" };
+    }
+    return { valid: true };
   },
 
-  async poll(context, config) {
-    const { minScore, topN } = configSchema.parse(config ?? {});
-
-    // Old cursor was a bare numeric story ID from the v1 "#1 only" connector.
-    // Skip one cycle to seed the new cursor format and avoid a notification burst.
-    if (context.cursor && !context.cursor.startsWith(CURSOR_PREFIX)) {
-      return { items: [], nextCursor: `${CURSOR_PREFIX}${Date.now()}` };
-    }
-
+  async poll(context) {
     const topRes = await fetch(`${HN_API}/topstories.json`);
     if (!topRes.ok) throw new Error(`HN topstories returned ${topRes.status}`);
     const topIds = (await topRes.json()) as number[];
 
-    if (!topIds.length) return { items: [], nextCursor: context.cursor };
+    if (!topIds.length) {
+      return { items: [], nextCursor: context.cursor };
+    }
 
-    const candidateIds = topIds.slice(0, topN);
+    const topId = topIds[0];
+    const cursor = parseCursor(context.cursor);
+    const notifiedIds = cursor?.notifiedIds ?? [];
 
-    const details = await Promise.all(
-      candidateIds.map(async (id) => {
-        const res = await fetch(`${HN_API}/item/${id}.json`);
-        if (!res.ok) return null;
-        return (await res.json()) as HNItem;
-      }),
-    );
+    // #1 hasn't changed — nothing to do
+    if (cursor && cursor.currentId === topId) {
+      return { items: [], nextCursor: context.cursor };
+    }
 
-    const qualifying = details.filter(
-      (item): item is HNItem => item !== null && (item.score ?? 0) >= minScore,
-    );
-
-    const items = qualifying.map((item) => {
-      const hnUrl = `https://news.ycombinator.com/item?id=${item.id}`;
-      return {
-        externalItemId: String(item.id),
-        title: item.title ?? "Untitled",
-        url: item.url ?? hnUrl,
-        contentText: item.text,
-        author: item.by,
-        publishedAt: item.time
-          ? new Date(item.time * 1000).toISOString()
-          : undefined,
-        tags: ["hackernews", item.type ?? "story"],
-        rawPayload: item,
+    // Already notified about this story (flip-flop prevention)
+    if (notifiedIds.includes(topId)) {
+      const newCursor: Cursor = {
+        currentId: topId,
+        notifiedIds: [topId, ...notifiedIds.filter((id) => id !== topId)].slice(0, MAX_NOTIFIED),
       };
-    });
+      return { items: [], nextCursor: JSON.stringify(newCursor) };
+    }
+
+    // Genuinely new #1 — fetch and return it
+    const itemRes = await fetch(`${HN_API}/item/${topId}.json`);
+    if (!itemRes.ok) throw new Error(`HN item ${topId} returned ${itemRes.status}`);
+    const item = (await itemRes.json()) as HNItem;
+
+    const hnUrl = `https://news.ycombinator.com/item?id=${item.id}`;
+    const newCursor: Cursor = {
+      currentId: topId,
+      notifiedIds: [topId, ...notifiedIds].slice(0, MAX_NOTIFIED),
+    };
 
     return {
-      items,
-      nextCursor: `${CURSOR_PREFIX}${Date.now()}`,
+      items: [
+        {
+          externalItemId: String(item.id),
+          title: item.title ?? "Untitled",
+          url: item.url ?? hnUrl,
+          contentText: item.text,
+          author: item.by,
+          publishedAt: item.time ? new Date(item.time * 1000).toISOString() : undefined,
+          tags: ["hackernews", item.type ?? "story"],
+          rawPayload: item,
+        },
+      ],
+      nextCursor: JSON.stringify(newCursor),
     };
   },
 };
