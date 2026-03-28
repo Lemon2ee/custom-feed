@@ -170,11 +170,6 @@ export default function OverviewPage() {
                   >
                     {autoPoll.running ? "Auto-poll running" : "Auto-poll stopped"}
                   </Badge>
-                  {autoPoll.running && (
-                    <span className="text-xs text-zinc-500">
-                      every {autoPoll.tickIntervalSec}s
-                    </span>
-                  )}
                 </div>
               </div>
             </CardHeader>
