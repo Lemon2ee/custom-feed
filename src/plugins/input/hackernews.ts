@@ -55,7 +55,7 @@ export const hackerNewsInputConnector: InputConnector = {
     const topIds = (await topRes.json()) as number[];
 
     if (!topIds.length) {
-      return { items: [], nextCursor: context.cursor };
+      return { items: [], nextCursor: context.cursor, details: { outcome: "empty_topstories" } };
     }
 
     const topId = topIds[0];
@@ -64,7 +64,7 @@ export const hackerNewsInputConnector: InputConnector = {
 
     // #1 hasn't changed — nothing to do
     if (cursor && cursor.currentId === topId) {
-      return { items: [], nextCursor: context.cursor };
+      return { items: [], nextCursor: context.cursor, details: { topId, outcome: "no_change" } };
     }
 
     // Already notified about this story (flip-flop prevention)
@@ -73,7 +73,11 @@ export const hackerNewsInputConnector: InputConnector = {
         currentId: topId,
         notifiedIds: [topId, ...notifiedIds.filter((id) => id !== topId)].slice(0, MAX_NOTIFIED),
       };
-      return { items: [], nextCursor: JSON.stringify(newCursor) };
+      return {
+        items: [],
+        nextCursor: JSON.stringify(newCursor),
+        details: { topId, previousId: cursor?.currentId, outcome: "suppressed_flipflop" },
+      };
     }
 
     // Genuinely new #1 — fetch and return it
@@ -101,6 +105,7 @@ export const hackerNewsInputConnector: InputConnector = {
         },
       ],
       nextCursor: JSON.stringify(newCursor),
+      details: { topId, previousId: cursor?.currentId, title: item.title, score: item.score, outcome: "notified" },
     };
   },
 };
