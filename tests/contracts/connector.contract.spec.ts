@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rssInputConnector } from "@/src/plugins/input/rss";
 import { youtubeInputConnector } from "@/src/plugins/input/youtube";
-import { hackerNewsInputConnector } from "@/src/plugins/input/hackernews";
 import { steamNewsInputConnector } from "@/src/plugins/input/steam-news";
 import { ntfyOutputConnector } from "@/src/plugins/output/ntfy";
 import { barkOutputConnector } from "@/src/plugins/output/bark";

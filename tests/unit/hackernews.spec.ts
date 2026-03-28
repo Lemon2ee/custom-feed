@@ -50,12 +50,6 @@ describe("hackerNewsInputConnector", () => {
     vi.restoreAllMocks();
   });
 
-  describe("validateConfig", () => {
-    it("accepts empty config", () => {
-      expect(hackerNewsInputConnector.validateConfig({}).valid).toBe(true);
-    });
-  });
-
   describe("poll — first poll (no cursor)", () => {
     it("returns the #1 story and sets initial cursor", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch")

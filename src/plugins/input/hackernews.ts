@@ -45,6 +45,10 @@ export const hackerNewsInputConnector: InputConnector = {
   kind: "input",
   id: "hackernews",
 
+  validateConfig() {
+    return { valid: true };
+  },
+
   async poll(context) {
     const topRes = await fetch(`${HN_API}/topstories.json`);
     if (!topRes.ok) throw new Error(`HN topstories returned ${topRes.status}`);
