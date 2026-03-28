@@ -85,6 +85,8 @@ export async function runSourcePoll(
   const input = registry.inputs[connectorId];
   if (!input) throw new Error(`input connector not found: ${connectorId}`);
 
+  const startedAt = new Date().toISOString();
+
   let polled;
   try {
     polled = await input.poll(
@@ -92,16 +94,29 @@ export async function runSourcePoll(
       source.config,
     );
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error("source poll failed", {
       workspaceId,
       sourceId,
       connectorId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
+    });
+    await repo.insertPollLog({
+      id: randomUUID(),
+      workspaceId,
+      sourceId,
+      sourceName: source.name,
+      connectorId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      status: "error",
+      errorMessage,
     });
     return;
   }
   const isInitialSync = !source.lastCursor && !source.lastPolledAt;
 
+  let newEvents = 0;
   for (const item of polled.items) {
     if (!matchesSourceFilter(item, source.filter)) {
       continue;
@@ -127,6 +142,7 @@ export async function runSourcePoll(
     });
     const inserted = await repo.upsertEvent(event);
     if (!inserted.inserted) continue;
+    newEvents++;
 
     if (isInitialSync) continue;
 
@@ -149,6 +165,20 @@ export async function runSourcePoll(
     lastCursor: polled.nextCursor ?? source.lastCursor,
     lastPolledAt: polledAt,
   });
+
+  await repo.insertPollLog({
+    id: randomUUID(),
+    workspaceId,
+    sourceId,
+    sourceName: source.name,
+    connectorId,
+    startedAt,
+    completedAt: polledAt,
+    status: "success",
+    itemsFetched: polled.items.length,
+    newEvents,
+  });
+
   logger.info("source poll completed", {
     workspaceId,
     sourceId,

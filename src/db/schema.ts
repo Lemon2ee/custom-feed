@@ -125,3 +125,17 @@ export const workspaceSettings = sqliteTable(
   }),
 );
 
+export const pollLogs = sqliteTable("poll_logs", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull(),
+  sourceId: text("source_id").notNull(),
+  sourceName: text("source_name").notNull().default(""),
+  connectorId: text("connector_id").notNull(),
+  startedAt: text("started_at").notNull(),
+  completedAt: text("completed_at"),
+  status: text("status").notNull(), // "success" | "error"
+  itemsFetched: integer("items_fetched"),
+  newEvents: integer("new_events"),
+  errorMessage: text("error_message"),
+});
+

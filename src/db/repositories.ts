@@ -56,6 +56,20 @@ export interface DeliveryRecord {
   receipt?: Record<string, unknown>;
 }
 
+export interface PollLogRecord {
+  id: string;
+  workspaceId: string;
+  sourceId: string;
+  sourceName: string;
+  connectorId: string;
+  startedAt: string;
+  completedAt?: string;
+  status: "success" | "error";
+  itemsFetched?: number;
+  newEvents?: number;
+  errorMessage?: string;
+}
+
 export interface Repository {
   listSources(workspaceId: string): Promise<SourceRecord[]>;
   upsertSource(source: SourceRecord): Promise<void>;
@@ -78,6 +92,11 @@ export interface Repository {
   listDeliveries(workspaceId: string): Promise<DeliveryRecord[]>;
   getSetting(workspaceId: string, key: string): Promise<string | null>;
   setSetting(workspaceId: string, key: string, value: string): Promise<void>;
+  insertPollLog(log: PollLogRecord): Promise<void>;
+  listPollLogsPaginated(
+    workspaceId: string,
+    opts: { page: number; pageSize: number },
+  ): Promise<{ data: PollLogRecord[]; total: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +332,45 @@ class D1Repository implements Repository {
         set: { value },
       });
   }
+
+  async insertPollLog(log: PollLogRecord): Promise<void> {
+    await this.db.insert(schema.pollLogs).values({
+      id: log.id,
+      workspaceId: log.workspaceId,
+      sourceId: log.sourceId,
+      sourceName: log.sourceName,
+      connectorId: log.connectorId,
+      startedAt: log.startedAt,
+      completedAt: log.completedAt ?? null,
+      status: log.status,
+      itemsFetched: log.itemsFetched ?? null,
+      newEvents: log.newEvents ?? null,
+      errorMessage: log.errorMessage ?? null,
+    });
+  }
+
+  async listPollLogsPaginated(
+    workspaceId: string,
+    opts: { page: number; pageSize: number },
+  ): Promise<{ data: PollLogRecord[]; total: number }> {
+    const [rows, countRows] = await Promise.all([
+      this.db
+        .select()
+        .from(schema.pollLogs)
+        .where(eq(schema.pollLogs.workspaceId, workspaceId))
+        .orderBy(desc(schema.pollLogs.startedAt))
+        .limit(opts.pageSize)
+        .offset((opts.page - 1) * opts.pageSize),
+      this.db
+        .select({ value: drizzleCount() })
+        .from(schema.pollLogs)
+        .where(eq(schema.pollLogs.workspaceId, workspaceId)),
+    ]);
+    return {
+      data: rows.map(rowToPollLog),
+      total: countRows[0]?.value ?? 0,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -490,6 +548,24 @@ function deliveryToRow(delivery: DeliveryRecord) {
     nextRetryAt: delivery.nextRetryAt ?? null,
     sentAt: delivery.sentAt ?? null,
     receiptJson: delivery.receipt ? JSON.stringify(delivery.receipt) : null,
+  };
+}
+
+function rowToPollLog(
+  row: typeof schema.pollLogs.$inferSelect,
+): PollLogRecord {
+  return {
+    id: row.id!,
+    workspaceId: row.workspaceId,
+    sourceId: row.sourceId,
+    sourceName: row.sourceName,
+    connectorId: row.connectorId,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt ?? undefined,
+    status: row.status as PollLogRecord["status"],
+    itemsFetched: row.itemsFetched ?? undefined,
+    newEvents: row.newEvents ?? undefined,
+    errorMessage: row.errorMessage ?? undefined,
   };
 }
 
