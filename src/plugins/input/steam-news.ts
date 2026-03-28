@@ -125,6 +125,11 @@ export const steamNewsInputConnector: InputConnector<SteamNewsConfig> = {
     return {
       items,
       nextCursor: String(Math.max(newestDate, cursorTs)),
+      details: {
+        appId,
+        totalFetched: newsItems.length,
+        returnedAfterCursor: items.length,
+      },
     };
   },
 };

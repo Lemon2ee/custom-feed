@@ -44,6 +44,12 @@ export const rssInputConnector: InputConnector<RssConfig> = {
     return {
       items,
       nextCursor: new Date().toISOString(),
+      details: {
+        feedTitle: feed.title,
+        feedUrl: parsed.feedUrl,
+        totalInFeed: (feed.items ?? []).length,
+        returnedAfterCursor: items.length,
+      },
     };
   },
 };

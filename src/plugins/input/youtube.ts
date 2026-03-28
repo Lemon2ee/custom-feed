@@ -173,6 +173,12 @@ export const youtubeInputConnector: InputConnector<YouTubeConfig> = {
     return {
       items,
       nextCursor: new Date().toISOString(),
+      details: {
+        channelId,
+        channelName: feed.title,
+        totalInFeed: (feed.items ?? []).length,
+        returnedAfterCursor: items.length,
+      },
     };
   },
 };
