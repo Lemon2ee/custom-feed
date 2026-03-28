@@ -41,22 +41,9 @@ function parseCursor(raw: string | undefined): Cursor | null {
   return null;
 }
 
-interface HNConfig {
-  minScore?: number;
-  topN?: number;
-}
-
-export const hackerNewsInputConnector: InputConnector<HNConfig> = {
+export const hackerNewsInputConnector: InputConnector = {
   kind: "input",
   id: "hackernews",
-
-  validateConfig(config) {
-    const c = config as HNConfig;
-    if (c.minScore !== undefined && c.minScore < 0) {
-      return { valid: false, error: "minScore must be >= 0" };
-    }
-    return { valid: true };
-  },
 
   async poll(context) {
     const topRes = await fetch(`${HN_API}/topstories.json`);
