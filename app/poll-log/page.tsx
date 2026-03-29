@@ -7,6 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 
+function connectorHue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
+  return Math.abs(h) % 360;
+}
+
 function durationMs(entry: PollLogEntry): string {
   if (!entry.completedAt) return "—";
   const ms = new Date(entry.completedAt).getTime() - new Date(entry.startedAt).getTime();
@@ -28,7 +34,12 @@ function PollLogRow({ entry }: { entry: PollLogEntry }) {
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{entry.sourceName || entry.sourceId}</span>
-            <Badge className="text-[10px] text-zinc-500">{entry.connectorId}</Badge>
+            <span
+              className="connector-tag inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+              style={{ "--hue": connectorHue(entry.connectorId) } as React.CSSProperties}
+            >
+              {entry.connectorId}
+            </span>
             {isError ? (
               <Badge className="border-red-300 text-red-700 dark:border-red-700 dark:text-red-400">
                 error
