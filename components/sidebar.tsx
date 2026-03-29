@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Cable, BellRing, LayoutDashboard, Newspaper, Puzzle, ScrollText } from "lucide-react";
+import { Cable, BellRing, LayoutDashboard, Newspaper, ScrollText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { href: "/sources", label: "Sources", icon: Cable },
   { href: "/outputs", label: "Outputs", icon: BellRing },
   { href: "/events", label: "Events", icon: Newspaper },
-  { href: "/plugins", label: "Connectors", icon: Puzzle },
   { href: "/poll-log", label: "Poll Log", icon: ScrollText },
 ] as const;
 
