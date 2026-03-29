@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { usePollLogs, type PollLogEntry } from "@/hooks/use-poll-logs";
+import { usePollIncidents } from "@/hooks/use-poll-incidents";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 
 function connectorHue(name: string): number {
   let h = 0;
@@ -91,6 +92,69 @@ function PollLogRow({ entry }: { entry: PollLogEntry }) {
   );
 }
 
+function formatDuration(sec: number): string {
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function PastIncidents() {
+  const { incidents, loading } = usePollIncidents();
+  const [expanded, setExpanded] = useState(false);
+
+  if (loading) return null;
+
+  return (
+    <div className="rounded-md border border-zinc-200 dark:border-zinc-800">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900"
+      >
+        <div className="flex items-center gap-2">
+          {incidents.length > 0 && (
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          )}
+          <span>Past Incidents</span>
+          {incidents.length > 0 && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+              {incidents.length}
+            </span>
+          )}
+        </div>
+        {expanded ? (
+          <ChevronUp className="h-4 w-4 text-zinc-400" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-zinc-400" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-zinc-200 dark:border-zinc-800">
+          {incidents.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-zinc-500">No incidents detected.</p>
+          ) : (
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {incidents.map((inc, i) => (
+                <li key={i} className="flex items-center justify-between px-4 py-3 text-sm">
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-zinc-500">
+                      {formatTime(inc.gapStart)} &rarr; {formatTime(inc.gapEnd)}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                    {formatDuration(inc.gapSec)} gap
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PollLogPage() {
   const {
     logs,
@@ -114,6 +178,8 @@ export default function PollLogPage() {
           A record of every source poll — when it ran, how many items were fetched, and any errors.
         </p>
       </header>
+
+      <PastIncidents />
 
       <Card>
         <CardHeader>

@@ -1,4 +1,4 @@
-import { Kysely } from "kysely";
+import { Kysely, sql } from "kysely";
 import type { Selectable, Insertable } from "kysely";
 import { D1Dialect } from "kysely-d1";
 import type { NormalizedEvent } from "@/src/core/events/types";
@@ -107,6 +107,10 @@ export interface Repository {
     workspaceId: string,
     opts: { page: number; pageSize: number },
   ): Promise<{ data: PollLogRecord[]; total: number }>;
+  listPollIncidents(
+    workspaceId: string,
+    opts: { gapThresholdSec: number; limit: number },
+  ): Promise<Array<{ gapStart: string; gapEnd: string; gapSec: number }>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +400,38 @@ class D1Repository implements Repository {
       data: rows.map(rowToPollLog),
       total: Number(countResult?.count ?? 0),
     };
+  }
+  async listPollIncidents(
+    workspaceId: string,
+    opts: { gapThresholdSec: number; limit: number },
+  ): Promise<Array<{ gapStart: string; gapEnd: string; gapSec: number }>> {
+    const rows = await sql<{
+      gap_start: string;
+      gap_end: string;
+      gap_sec: number;
+    }>`
+      WITH ordered AS (
+        SELECT
+          started_at,
+          LAG(started_at) OVER (ORDER BY started_at) AS prev_started_at
+        FROM poll_logs
+        WHERE workspace_id = ${workspaceId}
+      )
+      SELECT
+        prev_started_at AS gap_start,
+        started_at      AS gap_end,
+        ROUND((julianday(started_at) - julianday(prev_started_at)) * 86400) AS gap_sec
+      FROM ordered
+      WHERE gap_sec > ${opts.gapThresholdSec}
+      ORDER BY started_at DESC
+      LIMIT ${opts.limit}
+    `.execute(this.db);
+
+    return rows.rows.map((r) => ({
+      gapStart: r.gap_start,
+      gapEnd: r.gap_end,
+      gapSec: r.gap_sec,
+    }));
   }
 }
 
