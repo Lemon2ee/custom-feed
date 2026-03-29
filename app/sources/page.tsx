@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -53,6 +54,7 @@ export default function SourcesPage() {
     outputs,
     catalog,
     createSource,
+    updateSource,
     saveSourceEdits,
     deleteSource,
     fetchSourceItems,
@@ -80,26 +82,47 @@ export default function SourcesPage() {
     new Set(),
   );
   const [sourceSearchQuery, setSourceSearchQuery] = useState("");
+  const [filterPluginId, setFilterPluginId] = useState("__all__");
+  const [filterOutputId, setFilterOutputId] = useState("__all__");
+  const [filterStatus, setFilterStatus] = useState<"all" | "enabled" | "disabled">("all");
   const [sourceItems, setSourceItems] = useState<Record<string, SourceItem[]>>({});
   const [loadingItemsIds, setLoadingItemsIds] = useState<Set<string>>(new Set());
   const [sendingItemKeys, setSendingItemKeys] = useState<Set<string>>(new Set());
   const [creatingSource, setCreatingSource] = useState(false);
   const [savingSourceIds, setSavingSourceIds] = useState<Set<string>>(new Set());
   const [deletingSourceIds, setDeletingSourceIds] = useState<Set<string>>(new Set());
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   const selectedInput = catalog.inputs.find(
     (item) => item.id === sourceConnectorId,
   );
 
+  const uniquePluginIds = Array.from(new Set(sources.map((s) => s.pluginId)));
+
   const filteredSources = sources.filter((source) => {
-    if (!sourceSearchQuery.trim()) return true;
-    const q = sourceSearchQuery.toLowerCase();
-    if (source.name.toLowerCase().includes(q)) return true;
-    if (source.pluginId.toLowerCase().includes(q)) return true;
-    if (source.id.toLowerCase().includes(q)) return true;
-    return Object.values(source.config).some(
-      (v) => typeof v === "string" && v.toLowerCase().includes(q),
-    );
+    if (sourceSearchQuery.trim()) {
+      const q = sourceSearchQuery.toLowerCase();
+      const matchesText =
+        source.name.toLowerCase().includes(q) ||
+        source.pluginId.toLowerCase().includes(q) ||
+        source.id.toLowerCase().includes(q) ||
+        Object.values(source.config).some(
+          (v) => typeof v === "string" && v.toLowerCase().includes(q),
+        );
+      if (!matchesText) return false;
+    }
+    if (filterPluginId !== "__all__" && source.pluginId !== filterPluginId) return false;
+    if (filterOutputId === "__active__") {
+      const hasActiveOutput = source.outputIds.some(
+        (oid) => outputs.find((o) => o.id === oid)?.enabled,
+      );
+      if (!hasActiveOutput) return false;
+    } else if (filterOutputId !== "__all__") {
+      if (!source.outputIds.includes(filterOutputId)) return false;
+    }
+    if (filterStatus === "enabled" && !source.enabled) return false;
+    if (filterStatus === "disabled" && source.enabled) return false;
+    return true;
   });
 
   function getOverridableFields(pluginId: string): ConnectorConfigField[] {
@@ -239,6 +262,19 @@ export default function SourcesPage() {
       if (n > 0) return n;
     }
     return 20;
+  }
+
+  async function handleToggleEnabled(sourceId: string, enabled: boolean) {
+    setTogglingIds((prev) => new Set(prev).add(sourceId));
+    try {
+      await updateSource(sourceId, { enabled });
+    } finally {
+      setTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sourceId);
+        return next;
+      });
+    }
   }
 
   async function handleSaveEdits(sourceId: string) {
@@ -518,7 +554,9 @@ export default function SourcesPage() {
             {loading ? (
               <span className="inline-block h-5 w-24 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" />
             ) : (
-              `${sources.length} source${sources.length !== 1 ? "s" : ""}`
+              filteredSources.length !== sources.length
+                ? `${filteredSources.length} of ${sources.length} source${sources.length !== 1 ? "s" : ""}`
+                : `${sources.length} source${sources.length !== 1 ? "s" : ""}`
             )}
           </CardTitle>
         </CardHeader>
@@ -543,6 +581,48 @@ export default function SourcesPage() {
                   value={sourceSearchQuery}
                   onChange={(e) => setSourceSearchQuery(e.target.value)}
                 />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Select value={filterPluginId} onValueChange={setFilterPluginId}>
+                  <SelectTrigger className="h-8 w-auto min-w-32 text-xs">
+                    <SelectValue placeholder="Source type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All types</SelectItem>
+                    {uniquePluginIds.map((pid) => (
+                      <SelectItem key={pid} value={pid}>
+                        {pid}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterOutputId} onValueChange={setFilterOutputId}>
+                  <SelectTrigger className="h-8 w-auto min-w-32 text-xs">
+                    <SelectValue placeholder="Output" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All outputs</SelectItem>
+                    <SelectItem value="__active__">Any active output</SelectItem>
+                    {outputs.map((output) => (
+                      <SelectItem key={output.id} value={output.id}>
+                        {output.pluginId} ({output.id.slice(0, 6)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as "all" | "enabled" | "disabled")}>
+                  <SelectTrigger className="h-8 w-auto min-w-28 text-xs">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="enabled">Enabled</SelectItem>
+                    <SelectItem value="disabled">Disabled</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {filteredSources.length === 0 && (
@@ -589,6 +669,14 @@ export default function SourcesPage() {
                         <span className="text-xs text-zinc-500">
                           {source.id.slice(0, 6)}
                         </span>
+                        <Switch
+                          checked={source.enabled}
+                          disabled={togglingIds.has(source.id)}
+                          onCheckedChange={(checked) => {
+                            void handleToggleEnabled(source.id, checked);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
                       </span>
                     </button>
 

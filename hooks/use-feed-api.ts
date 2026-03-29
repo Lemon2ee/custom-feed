@@ -252,6 +252,23 @@ export function useFeedApi() {
     }
   }
 
+  async function updateSource(
+    sourceId: string,
+    edits: { enabled?: boolean },
+  ) {
+    try {
+      await jsonFetch(`/api/sources/${sourceId}`, {
+        method: "PATCH",
+        body: JSON.stringify(edits),
+      });
+      toast.success("Source updated.");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update source");
+      throw err;
+    }
+  }
+
   async function saveSourceEdits(
     sourceId: string,
     edits: {
@@ -461,6 +478,7 @@ export function useFeedApi() {
     autoPoll,
     refresh,
     createSource,
+    updateSource,
     saveSourceEdits,
     deleteSource,
     createOutput,
