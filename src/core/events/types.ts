@@ -6,6 +6,7 @@ export type SourceType =
   | "steam-news"
   | "stock"
   | "webhook"
+  | "reminder"
   | "custom";
 
 export interface NormalizedEvent {

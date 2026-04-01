@@ -4,6 +4,7 @@ import { youtubeInputConnector } from "./input/youtube";
 import { bilibiliInputConnector } from "./input/bilibili";
 import { hackerNewsInputConnector } from "./input/hackernews";
 import { steamNewsInputConnector } from "./input/steam-news";
+import { reminderInputConnector } from "./input/reminder";
 import { ntfyOutputConnector } from "./output/ntfy";
 import { barkOutputConnector } from "./output/bark";
 
@@ -34,6 +35,7 @@ export const connectorRegistry: ConnectorRegistry = {
     [bilibiliInputConnector.id]: bilibiliInputConnector,
     [hackerNewsInputConnector.id]: hackerNewsInputConnector,
     [steamNewsInputConnector.id]: steamNewsInputConnector,
+    [reminderInputConnector.id]: reminderInputConnector,
   },
   outputs: {
     [ntfyOutputConnector.id]: ntfyOutputConnector,
@@ -138,6 +140,47 @@ export const connectorCatalog: {
           type: "number",
           required: true,
           placeholder: "10",
+        },
+      ],
+    },
+    {
+      id: "reminder",
+      kind: "input",
+      name: "Reminder",
+      description: "Emits a periodic reminder with optional urgency tag.",
+      configFields: [
+        {
+          key: "title",
+          label: "Title",
+          type: "text",
+          required: true,
+          placeholder: "Take a short break",
+        },
+        {
+          key: "body",
+          label: "Body",
+          type: "text",
+          required: true,
+          placeholder: "Stand up, stretch, drink water",
+        },
+        {
+          key: "level",
+          label: "Urgency Level (optional)",
+          type: "select",
+          required: false,
+          options: [
+            { value: "active", label: "Active" },
+            { value: "timeSensitive", label: "Time Sensitive" },
+            { value: "critical", label: "Critical" },
+          ],
+          overridable: true,
+        },
+        {
+          key: "tags",
+          label: "Additional Tags (comma-separated)",
+          type: "text",
+          required: false,
+          placeholder: "focus, health",
         },
       ],
     },

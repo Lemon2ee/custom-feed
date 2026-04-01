@@ -131,7 +131,8 @@ export async function runSourcePoll(
     return;
   }
   const details = sanitizeDetails(polled.details);
-  const isInitialSync = !source.lastCursor && !source.lastPolledAt;
+  const deliverOnInitial = connectorId === "reminder";
+  const isInitialSync = !source.lastCursor && !source.lastPolledAt && !deliverOnInitial;
 
   let newEvents = 0;
   for (const item of polled.items) {
