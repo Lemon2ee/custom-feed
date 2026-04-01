@@ -98,7 +98,7 @@ Tested and working:
 - framer-motion
 - shadcn-ui
 - lucide-react
-- drizzle
+- Kysely
 - prisma
 
 ## Not Supported
