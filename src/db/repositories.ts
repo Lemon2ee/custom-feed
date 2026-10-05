@@ -92,6 +92,7 @@ export interface Repository {
   upsertRule(rule: Rule): Promise<void>;
   upsertEvent(event: NormalizedEvent): Promise<{ inserted: boolean }>;
   listEvents(workspaceId: string): Promise<NormalizedEvent[]>;
+  listEventsByIds(eventIds: string[]): Promise<NormalizedEvent[]>;
   countEvents(workspaceId: string): Promise<number>;
   listEventsPaginated(
     workspaceId: string,
@@ -100,6 +101,7 @@ export interface Repository {
   listDeliveriesByEventIds(eventIds: string[]): Promise<DeliveryRecord[]>;
   upsertDelivery(delivery: DeliveryRecord): Promise<void>;
   listDeliveries(workspaceId: string): Promise<DeliveryRecord[]>;
+  listPendingDeliveries(workspaceId: string): Promise<DeliveryRecord[]>;
   getSetting(workspaceId: string, key: string): Promise<string | null>;
   setSetting(workspaceId: string, key: string, value: string): Promise<void>;
   insertPollLog(log: PollLogRecord): Promise<void>;
@@ -269,6 +271,21 @@ class D1Repository implements Repository {
     return rows.map(rowToEvent);
   }
 
+  async listEventsByIds(eventIds: string[]): Promise<NormalizedEvent[]> {
+    // D1 caps bound parameters per query at 100, so chunk the IN list.
+    const rows = [];
+    for (let i = 0; i < eventIds.length; i += 90) {
+      rows.push(
+        ...(await this.db
+          .selectFrom("events")
+          .selectAll()
+          .where("id", "in", eventIds.slice(i, i + 90))
+          .execute()),
+      );
+    }
+    return rows.map(rowToEvent);
+  }
+
   async countEvents(workspaceId: string): Promise<number> {
     const result = await this.db
       .selectFrom("events")
@@ -329,6 +346,16 @@ class D1Repository implements Repository {
       .selectFrom("deliveries")
       .selectAll()
       .where("workspace_id", "=", workspaceId)
+      .execute();
+    return rows.map(rowToDelivery);
+  }
+
+  async listPendingDeliveries(workspaceId: string): Promise<DeliveryRecord[]> {
+    const rows = await this.db
+      .selectFrom("deliveries")
+      .selectAll()
+      .where("workspace_id", "=", workspaceId)
+      .where("status", "in", ["pending", "retrying"])
       .execute();
     return rows.map(rowToDelivery);
   }
