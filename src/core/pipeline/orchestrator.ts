@@ -212,12 +212,12 @@ export async function runPendingDeliveries(
   registry: ConnectorRegistry,
 ) {
   const repo = getRepository();
-  const deliveries = await repo.listDeliveries(workspaceId);
-  const pending = deliveries.filter((delivery) =>
-    delivery.status === "pending" || delivery.status === "retrying"
-  );
+  const pending = await repo.listPendingDeliveries(workspaceId);
+  if (pending.length === 0) return;
   const outputs = await repo.listOutputs(workspaceId);
-  const events = await repo.listEvents(workspaceId);
+  const events = await repo.listEventsByIds([
+    ...new Set(pending.map((delivery) => delivery.eventId)),
+  ]);
   const sources = await repo.listSources(workspaceId);
 
   const outputPriorityMap = new Map(outputs.map((o) => [o.id, o.priority]));
